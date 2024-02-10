@@ -1,4 +1,19 @@
-model_list:
+model_list: 
+# set alias 
+  - model_name: llama2
+    litellm_params:
+        model: ollama/llama2
+        owned_by: meta
+  - model_name: mistral
+    litellm_params:
+        model: ollama/mistral
+        owned_by: mistral
+  - model_name: orca
+    litellm_params:
+        model: ollama/orca2
+  - model_name: phi
+    litellm_params:
+        model: ollama/phi
   - model_name: text-davinci-003
     litellm_params:
         model: ollama/zephyr
@@ -10,6 +25,24 @@ model_list:
         model: ollama/llama2
         temperature: 0.1
         max_tokens: 20
+  # - model_name: text-embedding-ada-002
+  #   litellm_params:
+  #     model: azure/azure-embedding-model
+  #     api_base: "os.environ/AZURE_API_BASE"
+  #     api_key: "os.environ/AZURE_API_KEY"
+  #     api_version: "2023-07-01-preview"
+  #   model_info:
+  #     mode: embedding
+  #     base_model: text-embedding-ada-002
+
+litellm_settings: 
+  set_verbose: True
+
+general_settings: 
+  background_health_checks: False # True to enable background health checks
+  health_check_interval: 300 # frequency of background health checks
+
+
 
 
 # request to gpt-4, response from ollama/llama2

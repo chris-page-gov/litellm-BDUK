@@ -1,0 +1,27 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Start Llama2 on Port 50000",
+            "type": "shell",
+            "command": "export PYENV_VERSION=litellm && litellm -m llama2 -c ${workspaceFolder}/litellm_config.yaml --host localhost --port 50000",
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "Start Mistral on Port 50001",
+            "type": "shell",
+            "command": "export PYENV_VERSION=litellm && litellm -m mistral -c ${workspaceFolder}/litellm_config.yaml --host localhost --port 50001",
+            "isBackground": true,
+            "problemMatcher": []
+        },
+        {
+            "label": "Start Orca on Port 50002",
+            "type": "shell",
+            "command": "export PYENV_VERSION=litellm && litellm -m orca2 -c ${workspaceFolder}/litellm_config.yaml --host localhost --port 50002",
+            "isBackground": true,
+            "problemMatcher": []
+        }
+        // Add more as needed
+    ]
+}
