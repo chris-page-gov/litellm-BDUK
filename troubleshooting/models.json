@@ -4,13 +4,13 @@
             "id": "llama2",
             "object": "model",
             "created": 1677610602,
-            "owned_by": "openai"
+            "owned_by": "meta"
         },
         {
             "id": "mistral",
             "object": "model",
             "created": 1677610602,
-            "owned_by": "openai"
+            "owned_by": "mistral"
         },
         {
             "id": "gpt-4",
@@ -22,7 +22,7 @@
             "id": "orca",
             "object": "model",
             "created": 1677610602,
-            "owned_by": "openai"
+            "owned_by": "microsoft"
         },
         {
             "id": "gpt-3.5-turbo",
@@ -40,55 +40,7 @@
             "id": "phi",
             "object": "model",
             "created": 1677610602,
-            "owned_by": "openai"
-        },
-        {
-            "id": "llama2",
-            "object": "model",
-            "created": 1677610602,
-            "owned_by": "openai"
-        },
-        {
-            "id": "ollama/llama2",
-            "object": "model",
-            "created": 1677610602,
-            "owned_by": "openai"
-        },
-        {
-            "id": "ollama/mistral",
-            "object": "model",
-            "created": 1677610602,
-            "owned_by": "openai"
-        },
-        {
-            "id": "ollama/mistral-openorca",
-            "object": "model",
-            "created": 1677610602,
-            "owned_by": "openai"
-        },
-        {
-            "id": "ollama/mixtral",
-            "object": "model",
-            "created": 1677610602,
-            "owned_by": "openai"
-        },
-        {
-            "id": "ollama/orca2:13b",
-            "object": "model",
-            "created": 1677610602,
-            "owned_by": "openai"
-        },
-        {
-            "id": "ollama/orca2",
-            "object": "model",
-            "created": 1677610602,
-            "owned_by": "openai"
-        },
-        {
-            "id": "ollama/phi",
-            "object": "model",
-            "created": 1677610602,
-            "owned_by": "openai"
+            "owned_by": "microsoft"
         }
     ],
     "object": "list"
