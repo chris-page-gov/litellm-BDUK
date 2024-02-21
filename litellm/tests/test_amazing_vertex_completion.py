@@ -123,6 +123,10 @@ def test_vertex_ai():
             print(response)
             assert type(response.choices[0].message.content) == str
             assert len(response.choices[0].message.content) > 1
+            print(
+                f"response.choices[0].finish_reason: {response.choices[0].finish_reason}"
+            )
+            assert response.choices[0].finish_reason in litellm._openai_finish_reasons
         except Exception as e:
             pytest.fail(f"Error occurred: {e}")
 
@@ -262,6 +266,8 @@ async def test_async_vertexai_streaming_response():
                 complete_response += chunk.choices[0].delta.content
             print(f"complete_response: {complete_response}")
             assert len(complete_response) > 0
+        except litellm.RateLimitError as e:
+            pass
         except litellm.Timeout as e:
             pass
         except Exception as e:

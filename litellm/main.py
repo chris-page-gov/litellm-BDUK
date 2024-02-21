@@ -10,7 +10,6 @@
 import os, openai, sys, json, inspect, uuid, datetime, threading
 from typing import Any, Literal, Union
 from functools import partial
-
 import dotenv, traceback, random, asyncio, time, contextvars
 from copy import deepcopy
 import httpx
@@ -264,6 +263,8 @@ async def acompletion(
             or custom_llm_provider == "ollama"
             or custom_llm_provider == "ollama_chat"
             or custom_llm_provider == "vertex_ai"
+            or custom_llm_provider == "gemini"
+            or custom_llm_provider == "sagemaker"
             or custom_llm_provider in litellm.openai_compatible_providers
         ):  # currently implemented aiohttp calls for just azure, openai, hf, ollama, vertex ai soon all.
             init_response = await loop.run_in_executor(None, func_with_context)
@@ -1553,6 +1554,7 @@ def completion(
                 logger_fn=logger_fn,
                 encoding=encoding,
                 logging_obj=logging,
+                acompletion=acompletion,
             )
             if (
                 "stream" in optional_params and optional_params["stream"] == True
@@ -1560,7 +1562,7 @@ def completion(
                 print_verbose(f"ENTERS SAGEMAKER CUSTOMSTREAMWRAPPER")
                 from .llms.sagemaker import TokenIterator
 
-                tokenIterator = TokenIterator(model_response)
+                tokenIterator = TokenIterator(model_response, acompletion=acompletion)
                 response = CustomStreamWrapper(
                     completion_stream=tokenIterator,
                     model=model,
@@ -2588,10 +2590,28 @@ def embedding(
                 model_response=EmbeddingResponse(),
             )
         elif custom_llm_provider == "ollama":
+            ollama_input = None
+            if isinstance(input, list) and len(input) > 1:
+                raise litellm.BadRequestError(
+                    message=f"Ollama Embeddings don't support batch embeddings",
+                    model=model,  # type: ignore
+                    llm_provider="ollama",  # type: ignore
+                )
+            if isinstance(input, list) and len(input) == 1:
+                ollama_input = "".join(input[0])
+            elif isinstance(input, str):
+                ollama_input = input
+            else:
+                raise litellm.BadRequestError(
+                    message=f"Invalid input for ollama embeddings. input={input}",
+                    model=model,  # type: ignore
+                    llm_provider="ollama",  # type: ignore
+                )
+
             if aembedding == True:
                 response = ollama.ollama_aembeddings(
                     model=model,
-                    prompt=input,
+                    prompt=ollama_input,
                     encoding=encoding,
                     logging_obj=logging,
                     optional_params=optional_params,
@@ -2962,16 +2982,39 @@ def text_completion(
 
 
 ##### Moderation #######################
-def moderation(input: str, api_key: Optional[str] = None):
+
+
+def moderation(
+    input: str, model: Optional[str] = None, api_key: Optional[str] = None, **kwargs
+):
     # only supports open ai for now
     api_key = (
         api_key or litellm.api_key or litellm.openai_key or get_secret("OPENAI_API_KEY")
     )
-    openai.api_key = api_key
-    openai.api_type = "open_ai"  # type: ignore
-    openai.api_version = None
-    openai.base_url = "https://api.openai.com/v1/"
-    response = openai.moderations.create(input=input)
+
+    openai_client = kwargs.get("client", None)
+    if openai_client is None:
+        openai_client = openai.OpenAI(
+            api_key=api_key,
+        )
+
+    response = openai_client.moderations.create(input=input, model=model)
+    return response
+
+
+##### Moderation #######################
+@client
+async def amoderation(input: str, model: str, api_key: Optional[str] = None, **kwargs):
+    # only supports open ai for now
+    api_key = (
+        api_key or litellm.api_key or litellm.openai_key or get_secret("OPENAI_API_KEY")
+    )
+    openai_client = kwargs.get("client", None)
+    if openai_client is None:
+        openai_client = openai.AsyncOpenAI(
+            api_key=api_key,
+        )
+    response = await openai_client.moderations.create(input=input, model=model)
     return response
 
 
@@ -3154,6 +3197,7 @@ def image_generation(
                 "preset_cache_key": None,
                 "stream_response": {},
             },
+            custom_llm_provider=custom_llm_provider,
         )
 
         if custom_llm_provider == "azure":

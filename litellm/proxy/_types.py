@@ -21,10 +21,10 @@ class LiteLLMBase(BaseModel):
 
     def json(self, **kwargs):
         try:
-            return self.model_dump()  # noqa
+            return self.model_dump(**kwargs)  # noqa
         except Exception as e:
             # if using pydantic v1
-            return self.dict()
+            return self.dict(**kwargs)
 
     def fields_set(self):
         try:
@@ -154,6 +154,13 @@ class GenerateKeyRequest(GenerateRequestBase):
     duration: Optional[str] = None
     aliases: Optional[dict] = {}
     config: Optional[dict] = {}
+    permissions: Optional[dict] = {}
+    model_max_budget: Optional[dict] = (
+        {}
+    )  # {"gpt-4": 5.0, "gpt-3.5-turbo": 5.0}, defaults to {}
+
+    class Config:
+        protected_namespaces = ()
 
 
 class GenerateKeyResponse(GenerateKeyRequest):
@@ -166,7 +173,13 @@ class GenerateKeyResponse(GenerateKeyRequest):
     def set_model_info(cls, values):
         if values.get("token") is not None:
             values.update({"key": values.get("token")})
-        dict_fields = ["metadata", "aliases", "config"]
+        dict_fields = [
+            "metadata",
+            "aliases",
+            "config",
+            "permissions",
+            "model_max_budget",
+        ]
         for field in dict_fields:
             value = values.get(field)
             if value is not None and isinstance(value, str):
@@ -187,8 +200,8 @@ class UpdateKeyRequest(GenerateKeyRequest):
     metadata: Optional[dict] = None
 
 
-class DeleteKeyRequest(LiteLLMBase):
-    keys: List
+class KeyRequest(LiteLLMBase):
+    keys: List[str]
 
 
 class NewUserRequest(GenerateKeyRequest):
@@ -209,6 +222,38 @@ class UpdateUserRequest(GenerateRequestBase):
     metadata: Optional[dict] = None
     user_role: Optional[str] = None
     max_budget: Optional[float] = None
+
+
+class NewTeamRequest(LiteLLMBase):
+    team_alias: Optional[str] = None
+    team_id: Optional[str] = None
+    admins: list = []
+    members: list = []
+    metadata: Optional[dict] = None
+
+
+class LiteLLM_TeamTable(NewTeamRequest):
+    max_budget: Optional[float] = None
+    spend: Optional[float] = None
+    models: list = []
+    max_parallel_requests: Optional[int] = None
+    tpm_limit: Optional[int] = None
+    rpm_limit: Optional[int] = None
+    budget_duration: Optional[str] = None
+    budget_reset_at: Optional[datetime] = None
+
+
+class NewTeamResponse(LiteLLMBase):
+    team_id: str
+    admins: list
+    members: list
+    metadata: dict
+    created_at: datetime
+    updated_at: datetime
+
+
+class TeamRequest(LiteLLMBase):
+    teams: List[str]
 
 
 class KeyManagementSystem(enum.Enum):
@@ -234,6 +279,15 @@ class DynamoDBArgs(LiteLLMBase):
     key_table_name: str = "LiteLLM_VerificationToken"
     config_table_name: str = "LiteLLM_Config"
     spend_table_name: str = "LiteLLM_SpendLogs"
+    aws_role_name: Optional[str] = None
+    aws_session_name: Optional[str] = None
+    aws_web_identity_token: Optional[str] = None
+    aws_provider_id: Optional[str] = None
+    aws_policy_arns: Optional[List[str]] = None
+    aws_policy: Optional[str] = None
+    aws_duration_seconds: Optional[int] = None
+    assume_role_aws_role_name: Optional[str] = None
+    assume_role_aws_session_name: Optional[str] = None
 
 
 class ConfigGeneralSettings(LiteLLMBase):
@@ -259,6 +313,13 @@ class ConfigGeneralSettings(LiteLLMBase):
     database_url: Optional[str] = Field(
         None,
         description="connect to a postgres db - needed for generating temporary keys + tracking spend / key",
+    )
+    database_connection_pool_limit: Optional[int] = Field(
+        100,
+        description="default connection pool for prisma client connecting to postgres db",
+    )
+    database_connection_timeout: Optional[float] = Field(
+        60, description="default timeout for a connection to the database"
     )
     database_type: Optional[Literal["dynamo_db"]] = Field(
         None, description="to use dynamodb instead of postgres db"
@@ -340,6 +401,12 @@ class LiteLLM_VerificationToken(LiteLLMBase):
     budget_duration: Optional[str] = None
     budget_reset_at: Optional[datetime] = None
     allowed_cache_controls: Optional[list] = []
+    permissions: Dict = {}
+    model_spend: Dict = {}
+    model_max_budget: Dict = {}
+
+    class Config:
+        protected_namespaces = ()
 
 
 class UserAPIKeyAuth(
@@ -367,6 +434,8 @@ class LiteLLM_UserTable(LiteLLMBase):
     user_id: str
     max_budget: Optional[float]
     spend: float = 0.0
+    model_max_budget: Optional[Dict] = {}
+    model_spend: Optional[Dict] = {}
     user_email: Optional[str]
     models: list = []
 
@@ -377,6 +446,9 @@ class LiteLLM_UserTable(LiteLLMBase):
         if values.get("models") is None:
             values.update({"models": []})
         return values
+
+    class Config:
+        protected_namespaces = ()
 
 
 class LiteLLM_SpendLogs(LiteLLMBase):
@@ -394,6 +466,7 @@ class LiteLLM_SpendLogs(LiteLLMBase):
     metadata: Optional[dict] = {}
     cache_hit: Optional[str] = "False"
     cache_key: Optional[str] = None
+    request_tags: Optional[Json] = None
 
 
 class LiteLLM_SpendLogs_ResponseObject(LiteLLMBase):

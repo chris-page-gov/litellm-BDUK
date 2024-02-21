@@ -173,6 +173,20 @@ def is_port_in_use(port):
     is_flag=True,
     help="Starts proxy via gunicorn, instead of uvicorn (better for managing multiple workers)",
 )
+@click.option(
+    "--ssl_keyfile_path",
+    default=None,
+    type=str,
+    help="Path to the SSL keyfile. Use this when you want to provide SSL certificate when starting proxy",
+    envvar="SSL_KEYFILE_PATH",
+)
+@click.option(
+    "--ssl_certfile_path",
+    default=None,
+    type=str,
+    help="Path to the SSL certfile. Use this when you want to provide SSL certificate when starting proxy",
+    envvar="SSL_CERTFILE_PATH",
+)
 @click.option("--local", is_flag=True, default=False, help="for local debugging")
 def run_server(
     host,
@@ -203,6 +217,8 @@ def run_server(
     health,
     version,
     run_gunicorn,
+    ssl_keyfile_path,
+    ssl_certfile_path,
 ):
     global feature_telemetry
     args = locals()
@@ -393,6 +409,8 @@ def run_server(
                 "uvicorn, gunicorn needs to be imported. Run - `pip install 'litellm[proxy]'`"
             )
 
+        db_connection_pool_limit = 100
+        db_connection_timeout = 60
         if config is not None:
             """
             Allow user to pass in db url via config
@@ -411,6 +429,12 @@ def run_server(
                 proxy_config.load_config(router=None, config_file_path=config)
             )
             database_url = general_settings.get("database_url", None)
+            db_connection_pool_limit = general_settings.get(
+                "database_connection_pool_limit", 100
+            )
+            db_connection_timeout = general_settings.get(
+                "database_connection_timeout", 60
+            )
             if database_url and database_url.startswith("os.environ/"):
                 original_dir = os.getcwd()
                 # set the working directory to where this script is
@@ -431,14 +455,19 @@ def run_server(
             try:
                 if os.getenv("DATABASE_URL", None) is not None:
                     ### add connection pool + pool timeout args
-                    params = {"connection_limit": 100, "pool_timeout": 60}
+                    params = {
+                        "connection_limit": db_connection_pool_limit,
+                        "pool_timeout": db_connection_timeout,
+                    }
                     database_url = os.getenv("DATABASE_URL")
                     modified_url = append_query_params(database_url, params)
                     os.environ["DATABASE_URL"] = modified_url
-                    ###
                 if os.getenv("DIRECT_URL", None) is not None:
                     ### add connection pool + pool timeout args
-                    params = {"connection_limit": 100, "pool_timeout": 60}
+                    params = {
+                        "connection_limit": db_connection_pool_limit,
+                        "pool_timeout": db_connection_timeout,
+                    }
                     database_url = os.getenv("DIRECT_URL")
                     modified_url = append_query_params(database_url, params)
                     os.environ["DIRECT_URL"] = modified_url
@@ -475,7 +504,19 @@ def run_server(
         from litellm.proxy.proxy_server import app
 
         if run_gunicorn == False:
-            uvicorn.run(app, host=host, port=port)  # run uvicorn
+            if ssl_certfile_path is not None and ssl_keyfile_path is not None:
+                print(
+                    f"\033[1;32mLiteLLM Proxy: Using SSL with certfile: {ssl_certfile_path} and keyfile: {ssl_keyfile_path}\033[0m\n"
+                )
+                uvicorn.run(
+                    app,
+                    host=host,
+                    port=port,
+                    ssl_keyfile=ssl_keyfile_path,
+                    ssl_certfile=ssl_certfile_path,
+                )  # run uvicorn
+            else:
+                uvicorn.run(app, host=host, port=port)  # run uvicorn
         elif run_gunicorn == True:
             import gunicorn.app.base
 
@@ -542,8 +583,17 @@ def run_server(
                 "worker_class": "uvicorn.workers.UvicornWorker",
                 "preload": True,  # Add the preload flag,
                 "accesslog": "-",  # Log to stdout
+                "timeout": 600,  # default to very high number, bedrock/anthropic.claude-v2:1 can take 30+ seconds for the 1st chunk to come in
                 "access_log_format": '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s',
             }
+
+            if ssl_certfile_path is not None and ssl_keyfile_path is not None:
+                print(
+                    f"\033[1;32mLiteLLM Proxy: Using SSL with certfile: {ssl_certfile_path} and keyfile: {ssl_keyfile_path}\033[0m\n"
+                )
+                gunicorn_options["certfile"] = ssl_certfile_path
+                gunicorn_options["keyfile"] = ssl_keyfile_path
+
             StandaloneApplication(
                 app=app, options=gunicorn_options
             ).run()  # Run gunicorn

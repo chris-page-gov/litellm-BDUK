@@ -14,6 +14,7 @@ interface CreateKeyProps {
   userRole: string | null;
   accessToken: string;
   data: any[] | null;
+  userModels: string[];
   setData: React.Dispatch<React.SetStateAction<any[] | null>>;
 }
 
@@ -22,6 +23,7 @@ const CreateKey: React.FC<CreateKeyProps> = ({
   userRole,
   accessToken,
   data,
+  userModels,
   setData,
 }) => {
   const [form] = Form.useForm();
@@ -42,20 +44,13 @@ const CreateKey: React.FC<CreateKeyProps> = ({
   const handleCreate = async (formValues: Record<string, any>) => {
     try {
       message.info("Making API Call");
-      // Check if "models" exists and is not an empty string
-      if (formValues.models && formValues.models.trim() !== '') {
-        // Format the "models" field as an array
-        formValues.models = formValues.models.split(',').map((model: string) => model.trim());
-      } else {
-        // If "models" is undefined or an empty string, set it to an empty array
-        formValues.models = [];
-      }
       setIsModalVisible(true);
       const response = await keyCreateCall(accessToken, userID, formValues);
       setData((prevData) => (prevData ? [...prevData, response] : [response])); // Check if prevData is null
       setApiKey(response["key"]);
       message.success("API Key Created");
       form.resetFields();
+      localStorage.removeItem("userData" + userID)
     } catch (error) {
       console.error("Error creating the key:", error);
     }
@@ -75,14 +70,15 @@ const CreateKey: React.FC<CreateKeyProps> = ({
         onOk={handleOk}
         onCancel={handleCancel}
       >
-        <Form form={form} onFinish={handleCreate} labelCol={{ span: 6 }} wrapperCol={{ span: 16 }} labelAlign="left">
+        <Form form={form} onFinish={handleCreate} labelCol={{ span: 8 }} wrapperCol={{ span: 16 }} labelAlign="left">
         {userRole === 'App Owner' || userRole === 'Admin' ? (
             <>
+            
             <Form.Item
             label="Key Name"
-            name="key_alias"
+            name="key_alias"          
           >
-            <Input />
+            <Input />         
             </Form.Item>
             <Form.Item
               label="Team ID"
@@ -90,20 +86,39 @@ const CreateKey: React.FC<CreateKeyProps> = ({
             >
               <Input placeholder="ai_team" />
             </Form.Item>
-
             <Form.Item
-              label="Models (Comma Separated). Eg: gpt-3.5-turbo,gpt-4"
-              name="models"
+            label="Models"
+            name="models"
+          >
+            <Select
+              mode="multiple"
+              placeholder="Select models"
+              style={{ width: '100%' }}
             >
-              <Input placeholder="gpt-4,gpt-3.5-turbo" />
-            </Form.Item>
-            
-
+              {userModels.map((model) => (
+                <Option key={model} value={model}>
+                  {model}
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
             <Form.Item
               label="Max Budget (USD)"
               name="max_budget"
             >
               <InputNumber step={0.01} precision={2} width={200}/>
+            </Form.Item>
+            <Form.Item
+              label="Tokens per minute Limit (TPM)"
+              name="tpm_limit"
+            >
+              <InputNumber step={1} width={400}/>
+            </Form.Item>
+            <Form.Item
+              label="Requests per minute Limit (RPM)"
+              name="rpm_limit"
+            >
+              <InputNumber step={1} width={400}/>
             </Form.Item>
             <Form.Item
               label="Duration (eg: 30s, 30h, 30d)"

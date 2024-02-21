@@ -2,7 +2,7 @@ import { BarChart, Card, Title } from "@tremor/react";
 
 import React, { useState, useEffect } from "react";
 import { Grid, Col, Text, LineChart } from "@tremor/react";
-import { userSpendLogsCall } from "./networking";
+import { userSpendLogsCall, keyInfoCall } from "./networking";
 import { start } from "repl";
 
 interface UsagePageProps {
@@ -24,17 +24,11 @@ const customTooltip = (props: CustomTooltipTypeBar) => {
 
   const value = payload[0].payload;
   const date = value["startTime"];
-
+  const model_values = value["models"];
   // Convert the object into an array of key-value pairs
-  const entries: [string, number][] = Object.entries(value)
-    .filter(
-      ([key]) =>
-        key !== "spend" &&
-        key !== "startTime" &&
-        key !== "models" &&
-        key !== "users"
-    )
-    .map(([key, value]) => [key, value as number]); // Type assertion to specify the value as number
+  const entries: [string, number][] = Object.entries(model_values).map(
+    ([key, value]) => [key, value as number]
+  ); // Type assertion to specify the value as number
 
   // Sort the array based on the float value in descending order
   entries.sort((a, b) => b[1] - a[1]);
@@ -48,10 +42,12 @@ const customTooltip = (props: CustomTooltipTypeBar) => {
       {topEntries.map(([key, value]) => (
         <div key={key} className="flex flex-1 space-x-10">
           <div className="p-2">
-            <p className="text-tremor-content">
-              Token: {key.substring(0, 4)}{" "}
-              <span className="font-medium text-tremor-content-emphasis">
-                Spend: {value}
+            <p className="text-tremor-content text-xs">
+              {key}
+              {":"}
+              <span className="text-xs text-tremor-content-emphasis">
+                {" "}
+                {value ? (value < 0.01 ? "<$0.01" : value.toFixed(2)) : ""}
               </span>
             </p>
           </div>
@@ -79,7 +75,7 @@ function getTopKeys(data: Array<{ [key: string]: unknown }>): any[] {
 
   spendKeys.sort((a, b) => Number(b.spend) - Number(a.spend));
 
-  const topKeys = spendKeys.slice(0, 5);
+  const topKeys = spendKeys.slice(0, 5).map((k) => k.key);
   console.log(`topKeys: ${Object.keys(topKeys[0])}`);
   return topKeys;
 }
@@ -168,18 +164,29 @@ const UsagePage: React.FC<UsagePageProps> = ({
     if (accessToken && token && userRole && userID) {
       const fetchData = async () => {
         try {
-          const response = await userSpendLogsCall(
+          await userSpendLogsCall(
             accessToken,
             token,
             userRole,
             userID,
             startTime,
             endTime
-          );
-
-          setTopKeys(getTopKeys(response));
-          setTopUsers(getTopUsers(response));
-          setKeySpendData(response);
+          ).then(async (response) => {
+            const topKeysResponse = await keyInfoCall(
+              accessToken,
+              getTopKeys(response)
+            );
+            const filtered_keys = topKeysResponse["info"].map((k: any) => ({
+              key: (k["key_name"] || k["key_alias"] || k["token"]).substring(
+                0,
+                7
+              ),
+              spend: k["spend"],
+            }));
+            setTopKeys(filtered_keys);
+            setTopUsers(getTopUsers(response));
+            setKeySpendData(response);
+          });
         } catch (error) {
           console.error("There was an error fetching the data", error);
           // Optionally, update your UI to reflect the error state here as well
@@ -187,13 +194,8 @@ const UsagePage: React.FC<UsagePageProps> = ({
       };
       fetchData();
     }
-  }, [accessToken, token, userRole, userID]);
+  }, [accessToken, token, userRole, userID, startTime, endTime]);
 
-  topUsers.forEach((obj) => {
-    Object.values(obj).forEach((value) => {
-      console.log(value);
-    });
-  });
   return (
     <div style={{ width: "100%" }}>
       <Grid numItems={2} className="gap-2 p-10 h-[75vh] w-full">
@@ -221,7 +223,7 @@ const UsagePage: React.FC<UsagePageProps> = ({
               index="key"
               categories={["spend"]}
               colors={["blue"]}
-              yAxisWidth={200}
+              yAxisWidth={80}
               tickGap={5}
               layout="vertical"
               showXAxis={false}
