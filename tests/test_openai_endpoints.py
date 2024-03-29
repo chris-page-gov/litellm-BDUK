@@ -97,10 +97,10 @@ async def test_chat_completion_old_key():
     """
     async with aiohttp.ClientSession() as session:
         try:
-            key = "sk-yNXvlRO4SxIGG0XnRMYxTw"
+            key = "sk-ecMXHujzUtKCvHcwacdaTw"
             await chat_completion(session=session, key=key)
         except Exception as e:
-            key = "sk-2KV0sAElLQqMpLZXdNf3yw"  # try diff db key (in case db url is for the other db)
+            key = "sk-ecMXHujzUtKCvHcwacdaTw"  # try diff db key (in case db url is for the other db)
             await chat_completion(session=session, key=key)
 
 
@@ -198,6 +198,10 @@ async def image_generation(session, key):
         print()
 
         if status != 200:
+            if (
+                "Connection error" in response_text
+            ):  # OpenAI endpoint returns a connection error
+                return
             raise Exception(f"Request did not return a 200 status code: {status}")
 
 

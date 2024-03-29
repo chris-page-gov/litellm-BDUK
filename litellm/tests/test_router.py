@@ -167,14 +167,6 @@ def test_call_one_endpoint():
                 "rpm": 1800,
             },
             {
-                "model_name": "claude-v1",
-                "litellm_params": {
-                    "model": "bedrock/anthropic.claude-instant-v1",
-                },
-                "tpm": 100000,
-                "rpm": 10000,
-            },
-            {
                 "model_name": "text-embedding-ada-002",
                 "litellm_params": {
                     "model": "azure/azure-embedding-model",
@@ -202,15 +194,6 @@ def test_call_one_endpoint():
             )
             print("\n response", response)
 
-        async def call_bedrock_claude():
-            response = await router.acompletion(
-                model="bedrock/anthropic.claude-instant-v1",
-                messages=[{"role": "user", "content": "hello this request will pass"}],
-                specific_deployment=True,
-            )
-
-            print("\n response", response)
-
         async def call_azure_embedding():
             response = await router.aembedding(
                 model="azure/azure-embedding-model",
@@ -221,7 +204,6 @@ def test_call_one_endpoint():
             print("\n response", response)
 
         asyncio.run(call_azure_completion())
-        asyncio.run(call_bedrock_claude())
         asyncio.run(call_azure_embedding())
 
         os.environ["AZURE_API_BASE"] = old_api_base
@@ -314,6 +296,154 @@ def test_router_azure_acompletion():
 
 
 # test_router_azure_acompletion()
+
+
+def test_router_context_window_fallback():
+    """
+    - Give a gpt-3.5-turbo model group with different context windows (4k vs. 16k)
+    - Send a 5k prompt
+    - Assert it works
+    """
+    from large_text import text
+    import os
+
+    litellm.set_verbose = False
+
+    print(f"len(text): {len(text)}")
+    try:
+        model_list = [
+            {
+                "model_name": "gpt-3.5-turbo",  # openai model name
+                "litellm_params": {  # params for litellm completion/embedding call
+                    "model": "azure/chatgpt-v-2",
+                    "api_key": os.getenv("AZURE_API_KEY"),
+                    "api_version": os.getenv("AZURE_API_VERSION"),
+                    "api_base": os.getenv("AZURE_API_BASE"),
+                    "base_model": "azure/gpt-35-turbo",
+                },
+            },
+            {
+                "model_name": "gpt-3.5-turbo-large",  # openai model name
+                "litellm_params": {  # params for litellm completion/embedding call
+                    "model": "gpt-3.5-turbo-1106",
+                    "api_key": os.getenv("OPENAI_API_KEY"),
+                },
+            },
+        ]
+
+        router = Router(model_list=model_list, set_verbose=True, context_window_fallbacks=[{"gpt-3.5-turbo": ["gpt-3.5-turbo-large"]}], num_retries=0)  # type: ignore
+
+        response = router.completion(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": text},
+                {"role": "user", "content": "Who was Alexander?"},
+            ],
+        )
+
+        print(f"response: {response}")
+        assert response.model == "gpt-3.5-turbo-1106"
+    except Exception as e:
+        pytest.fail(f"Got unexpected exception on router! - {str(e)}")
+
+
+@pytest.mark.asyncio
+async def test_async_router_context_window_fallback():
+    """
+    - Give a gpt-3.5-turbo model group with different context windows (4k vs. 16k)
+    - Send a 5k prompt
+    - Assert it works
+    """
+    from large_text import text
+    import os
+
+    litellm.set_verbose = False
+
+    print(f"len(text): {len(text)}")
+    try:
+        model_list = [
+            {
+                "model_name": "gpt-3.5-turbo",  # openai model name
+                "litellm_params": {  # params for litellm completion/embedding call
+                    "model": "azure/chatgpt-v-2",
+                    "api_key": os.getenv("AZURE_API_KEY"),
+                    "api_version": os.getenv("AZURE_API_VERSION"),
+                    "api_base": os.getenv("AZURE_API_BASE"),
+                    "base_model": "azure/gpt-35-turbo",
+                },
+            },
+            {
+                "model_name": "gpt-3.5-turbo-large",  # openai model name
+                "litellm_params": {  # params for litellm completion/embedding call
+                    "model": "gpt-3.5-turbo-1106",
+                    "api_key": os.getenv("OPENAI_API_KEY"),
+                },
+            },
+        ]
+
+        router = Router(model_list=model_list, set_verbose=True, context_window_fallbacks=[{"gpt-3.5-turbo": ["gpt-3.5-turbo-large"]}], num_retries=0)  # type: ignore
+
+        response = await router.acompletion(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": text},
+                {"role": "user", "content": "Who was Alexander?"},
+            ],
+        )
+
+        print(f"response: {response}")
+        assert response.model == "gpt-3.5-turbo-1106"
+    except Exception as e:
+        pytest.fail(f"Got unexpected exception on router! - {str(e)}")
+
+
+def test_router_context_window_check():
+    """
+    - Give a gpt-3.5-turbo model group with different context windows (4k vs. 16k)
+    - Send a 5k prompt
+    - Assert it works
+    """
+    from large_text import text
+    import os
+
+    litellm.set_verbose = False
+
+    print(f"len(text): {len(text)}")
+    try:
+        model_list = [
+            {
+                "model_name": "gpt-3.5-turbo",  # openai model name
+                "litellm_params": {  # params for litellm completion/embedding call
+                    "model": "azure/chatgpt-v-2",
+                    "api_key": os.getenv("AZURE_API_KEY"),
+                    "api_version": os.getenv("AZURE_API_VERSION"),
+                    "api_base": os.getenv("AZURE_API_BASE"),
+                    "base_model": "azure/gpt-35-turbo",
+                },
+            },
+            {
+                "model_name": "gpt-3.5-turbo",  # openai model name
+                "litellm_params": {  # params for litellm completion/embedding call
+                    "model": "gpt-3.5-turbo-1106",
+                    "api_key": os.getenv("OPENAI_API_KEY"),
+                },
+            },
+        ]
+
+        router = Router(model_list=model_list, set_verbose=True, enable_pre_call_checks=True, num_retries=0)  # type: ignore
+
+        response = router.completion(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": text},
+                {"role": "user", "content": "Who was Alexander?"},
+            ],
+        )
+
+        print(f"response: {response}")
+    except Exception as e:
+        pytest.fail(f"Got unexpected exception on router! - {str(e)}")
+
 
 ### FUNCTION CALLING
 
@@ -460,6 +590,8 @@ async def test_aimg_gen_on_router():
             pass
         elif "Operation polling timed out" in str(e):
             pass
+        elif "Connection error" in str(e):
+            pass
         else:
             traceback.print_exc()
             pytest.fail(f"Error occurred: {e}")
@@ -540,6 +672,8 @@ def test_aembedding_on_router():
         if "Your task failed as a result of our safety system." in str(e):
             pass
         elif "Operation polling timed out" in str(e):
+            pass
+        elif "Connection error" in str(e):
             pass
         else:
             traceback.print_exc()
@@ -950,7 +1084,7 @@ def test_router_anthropic_key_dynamic():
         {
             "model_name": "anthropic-claude",
             "litellm_params": {
-                "model": "claude-instant-1",
+                "model": "claude-instant-1.2",
                 "api_key": anthropic_api_key,
             },
         }

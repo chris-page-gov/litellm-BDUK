@@ -2,7 +2,7 @@ import Image from '@theme/IdealImage';
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# 🔑 [BETA] Proxy UI 
+# [BETA] Proxy UI 
 ### **Create + delete keys through a UI**
 
 [Let users create their own keys](#setup-ssoauth-for-ui)
@@ -28,12 +28,12 @@ Follow [setup](./virtual_keys.md#setup)
 ```bash
 litellm --config /path/to/config.yaml
 
-#INFO: Proxy running on http://0.0.0.0:8000
+#INFO: Proxy running on http://0.0.0.0:4000
 ```
 
 ### 2. Go to UI 
 ```bash
-http://0.0.0.0:8000/ui # <proxy_base_url>/ui
+http://0.0.0.0:4000/ui # <proxy_base_url>/ui
 ```
 
 
@@ -47,16 +47,18 @@ Your Proxy Swagger is available on the root of the Proxy: e.g.: `http://localhos
 Set the following in your .env on the Proxy
 
 ```shell
-UI_USERNAME=ishaan-litellm
-UI_PASSWORD=langchain
+LITELLM_MASTER_KEY="sk-1234" # this is your master key for using the proxy server
+UI_USERNAME=ishaan-litellm   # username to sign in on UI
+UI_PASSWORD=langchain        # password to sign in on UI
 ```
 
 On accessing the LiteLLM UI, you will be prompted to enter your username, password
 
+## ✨ Enterprise Features
 
-## Setup SSO/Auth for UI
+### Setup SSO/Auth for UI
 
-### Step 1: Set upperbounds for keys
+#### Step 1: Set upperbounds for keys
 Control the upperbound that users can use for `max_budget`, `budget_duration` or any `key/generate` param per key. 
 
 ```yaml
@@ -71,7 +73,7 @@ litellm_settings:
 - Send a `/key/generate` request with `max_budget=200`
 - Key will be created with `max_budget=100` since 100 is the upper bound
 
-### Step 2: Setup Oauth Client
+#### Step 2: Setup Oauth Client
 <Tabs>
 <TabItem value="google" label="Google SSO">
 
@@ -132,8 +134,12 @@ The following can be used to customize attribute names when interacting with the
 ```shell
 GENERIC_USER_ID_ATTRIBUTE = "given_name"
 GENERIC_USER_EMAIL_ATTRIBUTE = "family_name"
+GENERIC_USER_DISPLAY_NAME_ATTRIBUTE = "display_name"
+GENERIC_USER_FIRST_NAME_ATTRIBUTE = "first_name"
+GENERIC_USER_LAST_NAME_ATTRIBUTE = "last_name"
 GENERIC_USER_ROLE_ATTRIBUTE = "given_role"
-
+GENERIC_CLIENT_STATE = "some-state" # if the provider needs a state parameter
+GENERIC_INCLUDE_CLIENT_ID = "false" # some providers enforce that the client_id is not in the body
 GENERIC_SCOPE = "openid profile email" # default scope openid is sometimes not enough to retrieve basic user info like first_name and last_name located in profile scope
 ```
 
@@ -147,24 +153,31 @@ GENERIC_SCOPE = "openid profile email" # default scope openid is sometimes not e
 
 </Tabs>
 
-### Step 3. Test flow
+#### Step 3. Set `PROXY_BASE_URL` in your .env
+
+Set this in your .env (so the proxy can set the correct redirect url)
+```shell
+PROXY_BASE_URL=https://litellm-api.up.railway.app/
+```
+
+#### Step 4. Test flow
 <Image img={require('../../img/litellm_ui_3.gif')} />
 
-## Set Admin view w/ SSO 
+### Set Admin view w/ SSO 
 
 You just need to set Proxy Admin ID
 
-### Step 1: Copy your ID from the UI 
+#### Step 1: Copy your ID from the UI 
 
 <Image img={require('../../img/litellm_ui_copy_id.png')} />
 
-### Step 2: Set it in your .env as the PROXY_ADMIN_ID 
+#### Step 2: Set it in your .env as the PROXY_ADMIN_ID 
 
 ```env
 export PROXY_ADMIN_ID="116544810872468347480"
 ```
 
-### Step 3: See all proxy keys
+#### Step 3: See all proxy keys
 
 <Image img={require('../../img/litellm_ui_admin.png')} />
 
@@ -173,3 +186,62 @@ export PROXY_ADMIN_ID="116544810872468347480"
 If you don't see all your keys this could be due to a cached token. So just re-login and it should work.
 
 :::
+
+### Restrict UI Access
+
+You can restrict UI Access to just admins - includes you (proxy_admin) and people you give view only access to (proxy_admin_viewer) for seeing global spend.
+
+**Step 1. Set 'admin_only' access**
+```yaml
+general_settings:
+    ui_access_mode: "admin_only"
+```
+
+**Step 2. Invite view-only users**
+
+<Image img={require('../../img/admin_ui_viewer.png')} />
+
+### Custom Branding Admin UI
+
+Use your companies custom branding on the LiteLLM Admin UI
+We allow you to 
+- Customize the UI Logo
+- Customize the UI color scheme
+<Image img={require('../../img/litellm_custom_ai.png')} />
+
+#### Set Custom Logo
+We allow you to pass a local image or a an http/https url of your image
+
+Set `UI_LOGO_PATH` on your env. We recommend using a hosted image, it's a lot easier to set up and configure / debug
+
+Exaple setting Hosted image
+```shell
+UI_LOGO_PATH="https://litellm-logo-aws-marketplace.s3.us-west-2.amazonaws.com/berriai-logo-github.png"
+```
+
+Exaple setting a local image (on your container)
+```shell
+UI_LOGO_PATH="ui_images/logo.jpg"
+```
+#### Set Custom Color Theme
+- Navigate to [/enterprise/enterprise_ui](https://github.com/BerriAI/litellm/blob/main/enterprise/enterprise_ui/_enterprise_colors.json)
+- Inside the `enterprise_ui` directory, rename `_enterprise_colors.json` to `enterprise_colors.json`
+- Set your companies custom color scheme in `enterprise_colors.json`
+Example contents of `enterprise_colors.json` 
+Set your colors to any of the following colors: https://www.tremor.so/docs/layout/color-palette#default-colors
+```json
+{
+    "brand": {
+      "DEFAULT": "teal",
+      "faint": "teal",
+      "muted": "teal",
+      "subtle": "teal",
+      "emphasis": "teal",
+      "inverted": "teal"
+    }
+}
+
+```
+- Deploy LiteLLM Proxy Server
+
+

@@ -6,6 +6,7 @@ import asyncio, time
 import aiohttp
 from openai import AsyncOpenAI
 import sys, os
+from typing import Optional
 
 sys.path.insert(
     0, os.path.abspath("../")
@@ -19,6 +20,7 @@ async def generate_key(
     budget=None,
     budget_duration=None,
     models=["azure-models", "gpt-4", "dall-e-3"],
+    max_parallel_requests: Optional[int] = None,
 ):
     url = "http://0.0.0.0:4000/key/generate"
     headers = {"Authorization": "Bearer sk-1234", "Content-Type": "application/json"}
@@ -28,6 +30,7 @@ async def generate_key(
         "duration": None,
         "max_budget": budget,
         "budget_duration": budget_duration,
+        "max_parallel_requests": max_parallel_requests,
     }
 
     print(f"data: {data}")
@@ -277,6 +280,29 @@ async def get_key_info(session, call_key, get_key=None):
         return await response.json()
 
 
+async def get_model_info(session, call_key):
+    """
+    Make sure only models user has access to are returned
+    """
+    url = "http://0.0.0.0:4000/model/info"
+    headers = {
+        "Authorization": f"Bearer {call_key}",
+        "Content-Type": "application/json",
+    }
+
+    async with session.get(url, headers=headers) as response:
+        status = response.status
+        response_text = await response.text()
+        print(response_text)
+        print()
+
+        if status != 200:
+            raise Exception(
+                f"Request did not return a 200 status code: {status}. Responses {response_text}"
+            )
+        return await response.json()
+
+
 @pytest.mark.asyncio
 async def test_key_info():
     """
@@ -300,6 +326,25 @@ async def test_key_info():
         random_key = key_gen["key"]
         status = await get_key_info(session=session, get_key=key, call_key=random_key)
         assert status == 403
+
+
+@pytest.mark.asyncio
+async def test_model_info():
+    """
+    Get model info for models key has access to
+    """
+    async with aiohttp.ClientSession() as session:
+        key_gen = await generate_key(session=session, i=0)
+        key = key_gen["key"]
+        # as admin #
+        admin_models = await get_model_info(session=session, call_key="sk-1234")
+        admin_models = admin_models["data"]
+        # as key itself #
+        user_models = await get_model_info(session=session, call_key=key)
+        user_models = user_models["data"]
+
+        assert len(admin_models) > len(user_models)
+        assert len(user_models) > 0
 
 
 async def get_spend_logs(session, request_id):
@@ -326,6 +371,16 @@ async def test_key_info_spend_values():
     - make completion call
     - assert cost is expected value
     """
+
+    async def retry_request(func, *args, _max_attempts=5, **kwargs):
+        for attempt in range(_max_attempts):
+            try:
+                return await func(*args, **kwargs)
+            except aiohttp.client_exceptions.ClientOSError as e:
+                if attempt + 1 == _max_attempts:
+                    raise  # re-raise the last ClientOSError if all attempts failed
+                print(f"Attempt {attempt+1} failed, retrying...")
+
     async with aiohttp.ClientSession() as session:
         ## Test Spend Update ##
         # completion
@@ -333,7 +388,9 @@ async def test_key_info_spend_values():
         key = key_gen["key"]
         response = await chat_completion(session=session, key=key)
         await asyncio.sleep(5)
-        spend_logs = await get_spend_logs(session=session, request_id=response["id"])
+        spend_logs = await retry_request(
+            get_spend_logs, session=session, request_id=response["id"]
+        )
         print(f"spend_logs: {spend_logs}")
         completion_tokens = spend_logs[0]["completion_tokens"]
         prompt_tokens = spend_logs[0]["prompt_tokens"]
@@ -428,6 +485,7 @@ async def test_key_info_spend_values_image_generation():
         assert spend > 0
 
 
+@pytest.mark.skip(reason="Frequent check on ci/cd leads to read timeout issue.")
 @pytest.mark.asyncio
 async def test_key_with_budgets():
     """
@@ -437,6 +495,15 @@ async def test_key_with_budgets():
     - Check if value updated
     """
     from litellm.proxy.utils import hash_token
+
+    async def retry_request(func, *args, _max_attempts=5, **kwargs):
+        for attempt in range(_max_attempts):
+            try:
+                return await func(*args, **kwargs)
+            except aiohttp.client_exceptions.ClientOSError as e:
+                if attempt + 1 == _max_attempts:
+                    raise  # re-raise the last ClientOSError if all attempts failed
+                print(f"Attempt {attempt+1} failed, retrying...")
 
     async with aiohttp.ClientSession() as session:
         key_gen = await generate_key(
@@ -449,16 +516,18 @@ async def test_key_with_budgets():
         reset_at_init_value = key_info["info"]["budget_reset_at"]
         reset_at_new_value = None
         i = 0
-        await asyncio.sleep(610)
-        while i < 3:
-            key_info = await get_key_info(session=session, get_key=key, call_key=key)
+        for i in range(3):
+            await asyncio.sleep(70)
+            key_info = await retry_request(
+                get_key_info, session=session, get_key=key, call_key=key
+            )
             reset_at_new_value = key_info["info"]["budget_reset_at"]
             try:
                 assert reset_at_init_value != reset_at_new_value
                 break
             except:
                 i + 1
-                await asyncio.sleep(5)
+                await asyncio.sleep(10)
         assert reset_at_init_value != reset_at_new_value
 
 
@@ -490,6 +559,7 @@ async def test_key_crossing_budget():
             assert "ExceededTokenBudget: Current spend for token:" in str(e)
 
 
+@pytest.mark.skip(reason="AWS Suspended Account")
 @pytest.mark.asyncio
 async def test_key_info_spend_values_sagemaker():
     """
@@ -512,3 +582,29 @@ async def test_key_info_spend_values_sagemaker():
         rounded_key_info_spend = round(key_info["info"]["spend"], 8)
         assert rounded_key_info_spend > 0
         # assert rounded_response_cost == rounded_key_info_spend
+
+
+@pytest.mark.asyncio
+async def test_key_rate_limit():
+    """
+    Tests backoff/retry logic on parallel request error.
+    - Create key with max parallel requests 0
+    - run 2 requests -> both fail
+    - Create key with max parallel request 1
+    - run 2 requests
+    - both should succeed
+    """
+    async with aiohttp.ClientSession() as session:
+        key_gen = await generate_key(session=session, i=0, max_parallel_requests=0)
+        new_key = key_gen["key"]
+        try:
+            await chat_completion(session=session, key=new_key)
+            pytest.fail(f"Expected this call to fail")
+        except Exception as e:
+            pass
+        key_gen = await generate_key(session=session, i=0, max_parallel_requests=1)
+        new_key = key_gen["key"]
+        try:
+            await chat_completion(session=session, key=new_key)
+        except Exception as e:
+            pytest.fail(f"Expected this call to work - {str(e)}")

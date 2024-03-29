@@ -225,6 +225,24 @@ def _gemini_vision_convert_messages(messages: list):
                 part_mime = "video/mp4"
                 google_clooud_part = Part.from_uri(img, mime_type=part_mime)
                 processed_images.append(google_clooud_part)
+            elif "base64" in img:
+                # Case 4: Images with base64 encoding
+                import base64, re
+
+                # base 64 is passed as data:image/jpeg;base64,<base-64-encoded-image>
+                image_metadata, img_without_base_64 = img.split(",")
+
+                # read mime_type from img_without_base_64=data:image/jpeg;base64
+                # Extract MIME type using regular expression
+                mime_type_match = re.match(r"data:(.*?);base64", image_metadata)
+
+                if mime_type_match:
+                    mime_type = mime_type_match.group(1)
+                else:
+                    mime_type = "image/jpeg"
+                decoded_img = base64.b64decode(img_without_base_64)
+                processed_image = Part.from_data(data=decoded_img, mime_type=mime_type)
+                processed_images.append(processed_image)
         return prompt, processed_images
     except Exception as e:
         raise e
@@ -271,14 +289,20 @@ def completion(
             Part,
             GenerationConfig,
         )
-        from google.cloud import aiplatform
+        from google.cloud import aiplatform  # type: ignore
         from google.protobuf import json_format  # type: ignore
         from google.protobuf.struct_pb2 import Value  # type: ignore
-        from google.cloud.aiplatform_v1beta1.types import content as gapic_content_types
-        import google.auth
+        from google.cloud.aiplatform_v1beta1.types import content as gapic_content_types  # type: ignore
+        import google.auth  # type: ignore
 
         ## Load credentials with the correct quota project ref: https://github.com/googleapis/python-aiplatform/issues/2557#issuecomment-1709284744
+        print_verbose(
+            f"VERTEX AI: vertex_project={vertex_project}; vertex_location={vertex_location}"
+        )
         creds, _ = google.auth.default(quota_project_id=vertex_project)
+        print_verbose(
+            f"VERTEX AI: creds={creds}; google application credentials: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}"
+        )
         vertexai.init(
             project=vertex_project, location=vertex_location, credentials=creds
         )
@@ -439,8 +463,8 @@ def completion(
                 tools=tools,
             )
 
-            if tools is not None and hasattr(
-                response.candidates[0].content.parts[0], "function_call"
+            if tools is not None and bool(
+                getattr(response.candidates[0].content.parts[0], "function_call", None)
             ):
                 function_call = response.candidates[0].content.parts[0].function_call
                 args_dict = {}
@@ -559,8 +583,7 @@ def completion(
                 f"llm_model.predict(endpoint={endpoint_path}, instances={instances})\n"
             )
             response = llm_model.predict(
-                endpoint=endpoint_path,
-                instances=instances
+                endpoint=endpoint_path, instances=instances
             ).predictions
 
             completion_response = response[0]
@@ -585,12 +608,8 @@ def completion(
                     "request_str": request_str,
                 },
             )
-            request_str += (
-                f"llm_model.predict(instances={instances})\n"
-            )
-            response = llm_model.predict(
-                instances=instances
-            ).predictions
+            request_str += f"llm_model.predict(instances={instances})\n"
+            response = llm_model.predict(instances=instances).predictions
 
             completion_response = response[0]
             if (
@@ -614,7 +633,6 @@ def completion(
             model_response["choices"][0]["message"]["content"] = str(
                 completion_response
             )
-        model_response["choices"][0]["message"]["content"] = str(completion_response)
         model_response["created"] = int(time.time())
         model_response["model"] = model
         ## CALCULATING USAGE
@@ -765,7 +783,8 @@ async def async_completion(
             """
             Vertex AI Model Garden
             """
-            from google.cloud import aiplatform
+            from google.cloud import aiplatform  # type: ignore
+
             ## LOGGING
             logging_obj.pre_call(
                 input=prompt,
@@ -797,11 +816,9 @@ async def async_completion(
                 and "\nOutput:\n" in completion_response
             ):
                 completion_response = completion_response.split("\nOutput:\n", 1)[1]
- 
+
         elif mode == "private":
-            request_str += (
-                f"llm_model.predict_async(instances={instances})\n"
-            )
+            request_str += f"llm_model.predict_async(instances={instances})\n"
             response_obj = await llm_model.predict_async(
                 instances=instances,
             )
@@ -826,7 +843,6 @@ async def async_completion(
             model_response["choices"][0]["message"]["content"] = str(
                 completion_response
             )
-        model_response["choices"][0]["message"]["content"] = str(completion_response)
         model_response["created"] = int(time.time())
         model_response["model"] = model
         ## CALCULATING USAGE
@@ -953,7 +969,8 @@ async def async_streaming(
         )
         response = llm_model.predict_streaming_async(prompt, **optional_params)
     elif mode == "custom":
-        from google.cloud import aiplatform
+        from google.cloud import aiplatform  # type: ignore
+
         stream = optional_params.pop("stream", None)
 
         ## LOGGING
@@ -972,7 +989,9 @@ async def async_streaming(
         endpoint_path = llm_model.endpoint_path(
             project=vertex_project, location=vertex_location, endpoint=model
         )
-        request_str += f"client.predict(endpoint={endpoint_path}, instances={instances})\n"
+        request_str += (
+            f"client.predict(endpoint={endpoint_path}, instances={instances})\n"
+        )
         response_obj = await llm_model.predict(
             endpoint=endpoint_path,
             instances=instances,
@@ -1005,12 +1024,15 @@ async def async_streaming(
         if stream:
             response = TextStreamer(completion_response)
 
+    logging_obj.post_call(input=prompt, api_key=None, original_response=response)
+
     streamwrapper = CustomStreamWrapper(
         completion_stream=response,
         model=model,
         custom_llm_provider="vertex_ai",
         logging_obj=logging_obj,
     )
+
     return streamwrapper
 
 
@@ -1025,6 +1047,7 @@ def embedding(
     vertex_project=None,
     vertex_location=None,
     aembedding=False,
+    print_verbose=None,
 ):
     # logic for parsing in - calling - parsing out model embedding calls
     try:
@@ -1036,11 +1059,17 @@ def embedding(
         )
 
     from vertexai.language_models import TextEmbeddingModel
-    import google.auth
+    import google.auth  # type: ignore
 
     ## Load credentials with the correct quota project ref: https://github.com/googleapis/python-aiplatform/issues/2557#issuecomment-1709284744
     try:
+        print_verbose(
+            f"VERTEX AI: vertex_project={vertex_project}; vertex_location={vertex_location}"
+        )
         creds, _ = google.auth.default(quota_project_id=vertex_project)
+        print_verbose(
+            f"VERTEX AI: creds={creds}; google application credentials: {os.getenv('GOOGLE_APPLICATION_CREDENTIALS')}"
+        )
         vertexai.init(
             project=vertex_project, location=vertex_location, credentials=creds
         )

@@ -72,7 +72,12 @@ class CustomLogger:  # https://docs.litellm.ai/docs/observability/custom_callbac
     ):
         pass
 
-    async def async_moderation_hook(self, data: dict):
+    async def async_moderation_hook(
+        self,
+        data: dict,
+        user_api_key_dict: UserAPIKeyAuth,
+        call_type: Literal["completion", "embeddings", "image_generation"],
+    ):
         pass
 
     async def async_post_call_streaming_hook(
@@ -124,7 +129,6 @@ class CustomLogger:  # https://docs.litellm.ai/docs/observability/custom_callbac
                 start_time,
                 end_time,
             )
-            print_verbose(f"Custom Logger - final response object: {response_obj}")
         except:
             # traceback.print_exc()
             print_verbose(f"Custom Logger Error - {traceback.format_exc()}")
@@ -142,7 +146,6 @@ class CustomLogger:  # https://docs.litellm.ai/docs/observability/custom_callbac
                 start_time,
                 end_time,
             )
-            print_verbose(f"Custom Logger - final response object: {response_obj}")
         except:
             # traceback.print_exc()
             print_verbose(f"Custom Logger Error - {traceback.format_exc()}")

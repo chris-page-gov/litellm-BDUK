@@ -1,6 +1,7 @@
 /** @type {import('tailwindcss').Config} */ 
 
 const colors = require("tailwindcss/colors");
+const userColors = require('./ui_colors.json') || {};
 module.exports = {
   content: [
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -15,10 +16,10 @@ module.exports = {
         // light mode
         tremor: {
           brand: {
-            faint: colors.indigo[50],
-            muted: colors.indigo[200],
-            subtle: colors.indigo[400],
-            DEFAULT: colors.indigo[500],
+            faint: userColors.brand.faint,
+            muted: userColors.brand.muted,
+            subtle: userColors.brand.subtle,
+            DEFAULT: userColors.brand.DEFAULT,
             emphasis: colors.indigo[700],
             inverted: colors.white,
           },
@@ -89,10 +90,10 @@ module.exports = {
         "tremor-full": "9999px",
       },
       fontSize: {
-        "tremor-label": ["0.75rem", { lineHeight: "0.4rem" }],
-        "tremor-default": ["0.875rem", { lineHeight: "1.25rem" }],
-        "tremor-title": ["1.125rem", { lineHeight: "1.75rem" }],
-        "tremor-metric": ["1.875rem", { lineHeight: "2.25rem" }],
+        "tremor-label": ["0.75rem", { lineHeight: "0.3rem" }],
+        "tremor-default": ["0.775rem", { lineHeight: "1.15rem" }],
+        "tremor-title": ["1.025rem", { lineHeight: "1.65rem" }],
+        "tremor-metric": ["1.675rem", { lineHeight: "2.15rem" }],
       },
     },
   },

@@ -13,7 +13,7 @@ Set model list, `api_base`, `api_key`, `temperature` & proxy server settings (`m
 | `general_settings`   | Server settings, example setting `master_key: sk-my_special_key` |
 | `environment_variables`   | Environment Variables example, `REDIS_HOST`, `REDIS_PORT` |
 
-**Complete List:** Check the Swagger UI docs on `<your-proxy-url>/#/config.yaml` (e.g. http://0.0.0.0:8000/#/config.yaml), for everything you can pass in the config.yaml.
+**Complete List:** Check the Swagger UI docs on `<your-proxy-url>/#/config.yaml` (e.g. http://0.0.0.0:4000/#/config.yaml), for everything you can pass in the config.yaml.
 
 
 ## Quick Start 
@@ -49,20 +49,19 @@ model_list:
       rpm: 6
   - model_name: anthropic-claude
     litellm_params: 
-      model="bedrock/anthropic.claude-instant-v1"
+      model: bedrock/anthropic.claude-instant-v1
       ### [OPTIONAL] SET AWS REGION ###
-      aws_region_name="us-east-1"
+      aws_region_name: us-east-1
   - model_name: vllm-models
     litellm_params:
       model: openai/facebook/opt-125m # the `openai/` prefix tells litellm it's openai compatible
-      api_base: http://0.0.0.0:8000
+      api_base: http://0.0.0.0:4000
       rpm: 1440
     model_info: 
       version: 2
 
 litellm_settings: # module level litellm settings - https://github.com/BerriAI/litellm/blob/main/litellm/__init__.py
   drop_params: True
-  set_verbose: True
 
 general_settings: 
   master_key: sk-1234 # [OPTIONAL] Only use this if you to require all calls to contain this key (Authorization: Bearer sk-1234)
@@ -91,7 +90,7 @@ Sends request to model where `model_name=gpt-3.5-turbo` on config.yaml.
 If multiple with `model_name=gpt-3.5-turbo` does [Load Balancing](https://docs.litellm.ai/docs/proxy/load_balancing)
 
 ```shell
-curl --location 'http://0.0.0.0:8000/chat/completions' \
+curl --location 'http://0.0.0.0:4000/chat/completions' \
 --header 'Content-Type: application/json' \
 --data ' {
       "model": "gpt-3.5-turbo",
@@ -111,7 +110,7 @@ curl --location 'http://0.0.0.0:8000/chat/completions' \
 Sends this request to model where `model_name=bedrock-claude-v1` on config.yaml
 
 ```shell
-curl --location 'http://0.0.0.0:8000/chat/completions' \
+curl --location 'http://0.0.0.0:4000/chat/completions' \
 --header 'Content-Type: application/json' \
 --data ' {
       "model": "bedrock-claude-v1",
@@ -131,7 +130,7 @@ curl --location 'http://0.0.0.0:8000/chat/completions' \
 import openai
 client = openai.OpenAI(
     api_key="anything",
-    base_url="http://0.0.0.0:8000"
+    base_url="http://0.0.0.0:4000"
 )
 
 # Sends request to model where `model_name=gpt-3.5-turbo` on config.yaml. 
@@ -179,7 +178,7 @@ messages = [
 
 # Sends request to model where `model_name=gpt-3.5-turbo` on config.yaml. 
 chat = ChatOpenAI(
-    openai_api_base="http://0.0.0.0:8000",  # set openai base to the proxy
+    openai_api_base="http://0.0.0.0:4000",  # set openai base to the proxy
     model = "gpt-3.5-turbo",                
     temperature=0.1
 )
@@ -189,7 +188,7 @@ print(response)
 
 # Sends request to model where `model_name=bedrock-claude-v1` on config.yaml. 
 claude_chat = ChatOpenAI(
-    openai_api_base="http://0.0.0.0:8000", # set openai base to the proxy
+    openai_api_base="http://0.0.0.0:4000", # set openai base to the proxy
     model = "bedrock-claude-v1",                   
     temperature=0.1
 )
@@ -202,7 +201,7 @@ print(response)
 </Tabs>
 
 
-## Save Model-specific params (API Base, API Keys, Temperature, Max Tokens, Seed, Organization, Headers etc.)
+## Save Model-specific params (API Base, Keys, Temperature, Max Tokens, Organization, Headers etc.)
 You can use the config to save model-specific information like api_base, api_key, temperature, max_tokens, etc. 
 
 [**All input params**](https://docs.litellm.ai/docs/completion/input#input-params-1)
@@ -227,6 +226,7 @@ model_list:
   - model_name: openai-gpt-3.5
     litellm_params:
       model: openai/gpt-3.5-turbo
+      extra_headers: {"AI-Resource Group": "ishaan-resource"}
       api_key: sk-123
       organization: org-ikDc4ex8NB
       temperature: 0.2
@@ -234,10 +234,6 @@ model_list:
     litellm_params:
       model: ollama/mistral
       api_base: your_ollama_api_base
-      headers: {
-        "HTTP-Referer": "litellm.ai",  
-        "X-Title": "LiteLLM Server"
-      }
 ```
 
 **Step 2**: Start server with config
@@ -247,23 +243,70 @@ $ litellm --config /path/to/config.yaml
 ```
 
 
-## Set Azure `base_model` for cost tracking
+## Load Balancing 
 
-**Problem**: Azure returns `gpt-4` in the response when `azure/gpt-4-1106-preview` is used. This leads to inaccurate cost tracking
+:::info
+For more on this, go to [this page](./load_balancing.md)
+:::
 
-**Solution** ✅ :  Set `base_model` on your config so litellm uses the correct model for calculating azure cost
+Use this to call multiple instances of the same model and configure things like [routing strategy](../routing.md#advanced). 
 
-Example config with `base_model`
+For optimal performance:
+- Set `tpm/rpm` per model deployment. Weighted picks are then based on the established tpm/rpm.
+- Select your optimal routing strategy in `router_settings:routing_strategy`. 
+
+LiteLLM supports
+```python
+["simple-shuffle", "least-busy", "usage-based-routing","latency-based-routing"], default="simple-shuffle"`
+```
+
+When `tpm/rpm` is set + `routing_strategy==simple-shuffle` litellm will use a weighted pick based on set tpm/rpm. **In our load tests setting tpm/rpm for all deployments + `routing_strategy==simple-shuffle` maximized throughput**
+- When using multiple LiteLLM Servers / Kubernetes set redis settings `router_settings:redis_host` etc
+
 ```yaml
 model_list:
-  - model_name: azure-gpt-3.5
+  - model_name: zephyr-beta
     litellm_params:
-      model: azure/chatgpt-v-2
-      api_base: os.environ/AZURE_API_BASE
-      api_key: os.environ/AZURE_API_KEY
-      api_version: "2023-07-01-preview"
-    model_info:
-      base_model: azure/gpt-4-1106-preview
+        model: huggingface/HuggingFaceH4/zephyr-7b-beta
+        api_base: http://0.0.0.0:8001
+        rpm: 60      # Optional[int]: When rpm/tpm set - litellm uses weighted pick for load balancing. rpm = Rate limit for this deployment: in requests per minute (rpm).
+        tpm: 1000   # Optional[int]: tpm = Tokens Per Minute 
+  - model_name: zephyr-beta
+    litellm_params:
+        model: huggingface/HuggingFaceH4/zephyr-7b-beta
+        api_base: http://0.0.0.0:8002
+        rpm: 600      
+  - model_name: zephyr-beta
+    litellm_params:
+        model: huggingface/HuggingFaceH4/zephyr-7b-beta
+        api_base: http://0.0.0.0:8003
+        rpm: 60000      
+  - model_name: gpt-3.5-turbo
+    litellm_params:
+        model: gpt-3.5-turbo
+        api_key: <my-openai-key>
+        rpm: 200      
+  - model_name: gpt-3.5-turbo-16k
+    litellm_params:
+        model: gpt-3.5-turbo-16k
+        api_key: <my-openai-key>
+        rpm: 100      
+
+litellm_settings:
+  num_retries: 3 # retry call 3 times on each model_name (e.g. zephyr-beta)
+  request_timeout: 10 # raise Timeout error if call takes longer than 10s. Sets litellm.request_timeout 
+  fallbacks: [{"zephyr-beta": ["gpt-3.5-turbo"]}] # fallback to gpt-3.5-turbo if call fails num_retries 
+  context_window_fallbacks: [{"zephyr-beta": ["gpt-3.5-turbo-16k"]}, {"gpt-3.5-turbo": ["gpt-3.5-turbo-16k"]}] # fallback to gpt-3.5-turbo-16k if context window error
+  allowed_fails: 3 # cooldown model if it fails > 1 call in a minute. 
+
+router_settings: # router_settings are optional
+  routing_strategy: simple-shuffle # Literal["simple-shuffle", "least-busy", "usage-based-routing","latency-based-routing"], default="simple-shuffle"
+  model_group_alias: {"gpt-4": "gpt-3.5-turbo"} # all requests with `gpt-4` will be routed to models with `gpt-3.5-turbo`
+  num_retries: 2
+  timeout: 30                                  # 30 seconds
+  redis_host: <your redis host>                # set this when using multiple litellm proxy deployments, load balancing state stored in redis
+  redis_password: <your redis password>
+  redis_port: 1992
 ```
 
 You can view your cost once you set up [Virtual keys](https://docs.litellm.ai/docs/proxy/virtual_keys) or [custom_callbacks](https://docs.litellm.ai/docs/proxy/logging)
@@ -501,7 +544,7 @@ litellm --config config.yaml
 Sends Request to `bedrock-cohere`
 
 ```shell
-curl --location 'http://0.0.0.0:8000/chat/completions' \
+curl --location 'http://0.0.0.0:4000/chat/completions' \
   --header 'Content-Type: application/json' \
   --data ' {
   "model": "bedrock-cohere",
@@ -514,29 +557,15 @@ curl --location 'http://0.0.0.0:8000/chat/completions' \
 }'
 ```
 
+## Disable Swagger UI 
 
-## Router Settings 
+To disable the Swagger docs from the base url, set 
 
-Use this to configure things like routing strategy. 
-
-```yaml
-router_settings:
-  routing_strategy: "least-busy"
-
-model_list: # will route requests to the least busy ollama model
-  - model_name: ollama-models
-    litellm_params: 
-      model: "ollama/mistral"
-      api_base: "http://127.0.0.1:8001"
-  - model_name: ollama-models
-    litellm_params: 
-      model: "ollama/codellama"
-      api_base: "http://127.0.0.1:8002"
-  - model_name: ollama-models
-    litellm_params: 
-      model: "ollama/llama2"
-      api_base: "http://127.0.0.1:8003"
+```env
+NO_DOCS="True"
 ```
+
+in your environment, and restart the proxy. 
 
 
 ## Configure DB Pool Limits + Connection Timeouts 
@@ -570,6 +599,11 @@ general_settings:
   "litellm_settings": {}, # ALL (https://github.com/BerriAI/litellm/blob/main/litellm/__init__.py)
   "general_settings": {
     "completion_model": "string",
+    "disable_spend_logs": "boolean", # turn off writing each transaction to the db
+    "disable_reset_budget": "boolean", # turn off reset budget scheduled task
+    "enable_jwt_auth": "boolean", # allow proxy admin to auth in via jwt tokens with 'litellm_proxy_admin' in claims
+    "enforce_user_param": "boolean", # requires all openai endpoint requests to have a 'user' param
+    "allowed_routes": "list", # list of allowed proxy API routes - a user can access. (currently JWT-Auth only)
     "key_management_system": "google_kms", # either google_kms or azure_kms
     "master_key": "string",
     "database_url": "string",

@@ -109,6 +109,9 @@ def test_vertex_ai():
                 "code-gecko@latest",
                 "code-bison@001",
                 "text-bison@001",
+                "gemini-1.5-pro",
+                "gemini-1.5-pro-preview-0215",
+                "gemini-1.5-pro-vision",
             ]:
                 # our account does not have access to this model
                 continue
@@ -127,6 +130,8 @@ def test_vertex_ai():
                 f"response.choices[0].finish_reason: {response.choices[0].finish_reason}"
             )
             assert response.choices[0].finish_reason in litellm._openai_finish_reasons
+        except litellm.RateLimitError as e:
+            pass
         except Exception as e:
             pytest.fail(f"Error occurred: {e}")
 
@@ -136,7 +141,7 @@ def test_vertex_ai():
 
 def test_vertex_ai_stream():
     load_vertex_ai_credentials()
-    litellm.set_verbose = False
+    litellm.set_verbose = True
     litellm.vertex_project = "reliablekeys"
     import random
 
@@ -157,6 +162,9 @@ def test_vertex_ai_stream():
                 "code-gecko@latest",
                 "code-bison@001",
                 "text-bison@001",
+                "gemini-1.5-pro",
+                "gemini-1.5-pro-preview-0215",
+                "gemini-1.5-pro-vision",
             ]:
                 # our account does not have access to this model
                 continue
@@ -177,6 +185,8 @@ def test_vertex_ai_stream():
                 assert type(content) == str
                 # pass
             assert len(completed_str) > 4
+        except litellm.RateLimitError as e:
+            pass
         except Exception as e:
             pytest.fail(f"Error occurred: {e}")
 
@@ -206,6 +216,9 @@ async def test_async_vertexai_response():
             "code-gecko@latest",
             "code-bison@001",
             "text-bison@001",
+            "gemini-1.5-pro",
+            "gemini-1.5-pro-preview-0215",
+            "gemini-1.5-pro-vision",
         ]:
             # our account does not have access to this model
             continue
@@ -216,6 +229,8 @@ async def test_async_vertexai_response():
                 model=model, messages=messages, temperature=0.7, timeout=5
             )
             print(f"response: {response}")
+        except litellm.RateLimitError as e:
+            pass
         except litellm.Timeout as e:
             pass
         except Exception as e:
@@ -246,6 +261,9 @@ async def test_async_vertexai_streaming_response():
             "code-gecko@latest",
             "code-bison@001",
             "text-bison@001",
+            "gemini-1.5-pro",
+            "gemini-1.5-pro-preview-0215",
+            "gemini-1.5-pro-vision",
         ]:
             # our account does not have access to this model
             continue
@@ -263,7 +281,8 @@ async def test_async_vertexai_streaming_response():
             complete_response = ""
             async for chunk in response:
                 print(f"chunk: {chunk}")
-                complete_response += chunk.choices[0].delta.content
+                if chunk.choices[0].delta.content is not None:
+                    complete_response += chunk.choices[0].delta.content
             print(f"complete_response: {complete_response}")
             assert len(complete_response) > 0
         except litellm.RateLimitError as e:
@@ -318,7 +337,54 @@ def test_gemini_pro_vision():
 # test_gemini_pro_vision()
 
 
-def gemini_pro_function_calling():
+def encode_image(image_path):
+    import base64
+
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode("utf-8")
+
+
+@pytest.mark.skip(
+    reason="we already test gemini-pro-vision, this is just another way to pass images"
+)
+def test_gemini_pro_vision_base64():
+    try:
+        load_vertex_ai_credentials()
+        litellm.set_verbose = True
+        litellm.num_retries = 3
+        image_path = "../proxy/cached_logo.jpg"
+        # Getting the base64 string
+        base64_image = encode_image(image_path)
+        resp = litellm.completion(
+            model="vertex_ai/gemini-pro-vision",
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Whats in this image?"},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": "data:image/jpeg;base64," + base64_image
+                            },
+                        },
+                    ],
+                }
+            ],
+        )
+        print(resp)
+
+        prompt_tokens = resp.usage.prompt_tokens
+    except litellm.RateLimitError as e:
+        pass
+    except Exception as e:
+        if "500 Internal error encountered.'" in str(e):
+            pass
+        else:
+            pytest.fail(f"An exception occurred - {str(e)}")
+
+
+def test_gemini_pro_function_calling():
     load_vertex_ai_credentials()
     tools = [
         {
@@ -345,13 +411,16 @@ def gemini_pro_function_calling():
         model="gemini-pro", messages=messages, tools=tools, tool_choice="auto"
     )
     print(f"completion: {completion}")
+    assert completion.choices[0].message.content is None
+    assert len(completion.choices[0].message.tool_calls) == 1
 
 
 # gemini_pro_function_calling()
 
 
-async def gemini_pro_async_function_calling():
+def test_gemini_pro_function_calling_streaming():
     load_vertex_ai_credentials()
+    litellm.set_verbose = True
     tools = [
         {
             "type": "function",
@@ -373,13 +442,96 @@ async def gemini_pro_async_function_calling():
         }
     ]
     messages = [{"role": "user", "content": "What's the weather like in Boston today?"}]
-    completion = await litellm.acompletion(
-        model="gemini-pro", messages=messages, tools=tools, tool_choice="auto"
+    completion = litellm.completion(
+        model="gemini-pro",
+        messages=messages,
+        tools=tools,
+        tool_choice="auto",
+        stream=True,
     )
     print(f"completion: {completion}")
+    # assert completion.choices[0].message.content is None
+    # assert len(completion.choices[0].message.tool_calls) == 1
+    for chunk in completion:
+        print(f"chunk: {chunk}")
+
+
+@pytest.mark.asyncio
+async def test_gemini_pro_async_function_calling():
+    load_vertex_ai_credentials()
+    try:
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_current_weather",
+                    "description": "Get the current weather in a given location",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "location": {
+                                "type": "string",
+                                "description": "The city and state, e.g. San Francisco, CA",
+                            },
+                            "unit": {
+                                "type": "string",
+                                "enum": ["celsius", "fahrenheit"],
+                            },
+                        },
+                        "required": ["location"],
+                    },
+                },
+            }
+        ]
+        messages = [
+            {"role": "user", "content": "What's the weather like in Boston today?"}
+        ]
+        completion = await litellm.acompletion(
+            model="gemini-pro", messages=messages, tools=tools, tool_choice="auto"
+        )
+        print(f"completion: {completion}")
+        assert completion.choices[0].message.content is None
+        assert len(completion.choices[0].message.tool_calls) == 1
+    except litellm.RateLimitError as e:
+        pass
+    except Exception as e:
+        pytest.fail(f"An exception occurred - {str(e)}")
+    # raise Exception("it worked!")
 
 
 # asyncio.run(gemini_pro_async_function_calling())
+
+
+def test_vertexai_embedding():
+    try:
+        load_vertex_ai_credentials()
+        # litellm.set_verbose=True
+        response = embedding(
+            model="textembedding-gecko@001",
+            input=["good morning from litellm", "this is another item"],
+        )
+        print(f"response:", response)
+    except litellm.RateLimitError as e:
+        pass
+    except Exception as e:
+        pytest.fail(f"Error occurred: {e}")
+
+
+@pytest.mark.asyncio
+async def test_vertexai_aembedding():
+    try:
+        load_vertex_ai_credentials()
+        # litellm.set_verbose=True
+        response = await litellm.aembedding(
+            model="textembedding-gecko@001",
+            input=["good morning from litellm", "this is another item"],
+        )
+        print(f"response: {response}")
+    except litellm.RateLimitError as e:
+        pass
+    except Exception as e:
+        pytest.fail(f"Error occurred: {e}")
+
 
 # Extra gemini Vision tests for completion + stream, async, async + stream
 # if we run into issues with gemini, we will also add these to our ci/cd pipeline

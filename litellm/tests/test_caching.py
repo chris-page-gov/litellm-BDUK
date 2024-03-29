@@ -33,6 +33,41 @@ def generate_random_word(length=4):
 messages = [{"role": "user", "content": "who is ishaan 5222"}]
 
 
+# @pytest.mark.skip(reason="")
+def test_caching_dynamic_args():  # test in memory cache
+    try:
+        litellm.set_verbose = True
+        _redis_host_env = os.environ.pop("REDIS_HOST")
+        _redis_port_env = os.environ.pop("REDIS_PORT")
+        _redis_password_env = os.environ.pop("REDIS_PASSWORD")
+        litellm.cache = Cache(
+            type="redis",
+            host=_redis_host_env,
+            port=_redis_port_env,
+            password=_redis_password_env,
+        )
+        response1 = completion(model="gpt-3.5-turbo", messages=messages, caching=True)
+        response2 = completion(model="gpt-3.5-turbo", messages=messages, caching=True)
+        print(f"response1: {response1}")
+        print(f"response2: {response2}")
+        litellm.cache = None  # disable cache
+        litellm.success_callback = []
+        litellm._async_success_callback = []
+        if (
+            response2["choices"][0]["message"]["content"]
+            != response1["choices"][0]["message"]["content"]
+        ):
+            print(f"response1: {response1}")
+            print(f"response2: {response2}")
+            pytest.fail(f"Error occurred:")
+        os.environ["REDIS_HOST"] = _redis_host_env
+        os.environ["REDIS_PORT"] = _redis_port_env
+        os.environ["REDIS_PASSWORD"] = _redis_password_env
+    except Exception as e:
+        print(f"error occurred: {traceback.format_exc()}")
+        pytest.fail(f"Error occurred: {e}")
+
+
 def test_caching_v2():  # test in memory cache
     try:
         litellm.set_verbose = True
@@ -76,6 +111,23 @@ def test_caching_with_ttl():
             response2["choices"][0]["message"]["content"]
             != response1["choices"][0]["message"]["content"]
         )
+    except Exception as e:
+        print(f"error occurred: {traceback.format_exc()}")
+        pytest.fail(f"Error occurred: {e}")
+
+
+def test_caching_with_default_ttl():
+    try:
+        litellm.set_verbose = True
+        litellm.cache = Cache(ttl=0)
+        response1 = completion(model="gpt-3.5-turbo", messages=messages, caching=True)
+        response2 = completion(model="gpt-3.5-turbo", messages=messages, caching=True)
+        print(f"response1: {response1}")
+        print(f"response2: {response2}")
+        litellm.cache = None  # disable cache
+        litellm.success_callback = []
+        litellm._async_success_callback = []
+        assert response2["id"] != response1["id"]
     except Exception as e:
         print(f"error occurred: {traceback.format_exc()}")
         pytest.fail(f"Error occurred: {e}")
@@ -334,6 +386,48 @@ async def test_redis_cache_basic():
     assert stored_val["id"] == response1.id
 
 
+@pytest.mark.asyncio
+async def test_redis_batch_cache_write():
+    """
+    Init redis client
+    - write to client
+    - read from client
+    """
+    litellm.set_verbose = True
+    import uuid
+
+    messages = [
+        {"role": "user", "content": f"write a one sentence poem about: {uuid.uuid4()}"},
+    ]
+    litellm.cache = Cache(
+        type="redis",
+        host=os.environ["REDIS_HOST"],
+        port=os.environ["REDIS_PORT"],
+        password=os.environ["REDIS_PASSWORD"],
+        redis_flush_size=2,
+    )
+    response1 = await litellm.acompletion(
+        model="gpt-3.5-turbo",
+        messages=messages,
+    )
+
+    response2 = await litellm.acompletion(
+        model="anthropic/claude-3-opus-20240229",
+        messages=messages,
+        mock_response="good morning from this test",
+    )
+
+    # we hit the flush size, this will now send to redis
+    await asyncio.sleep(2)
+
+    response4 = await litellm.acompletion(
+        model="gpt-3.5-turbo",
+        messages=messages,
+    )
+
+    assert response1.id == response4.id
+
+
 def test_redis_cache_completion():
     litellm.set_verbose = False
 
@@ -438,11 +532,10 @@ def test_redis_cache_completion_stream():
             temperature=0.2,
             stream=True,
         )
-        response_1_content = ""
+        response_1_id = ""
         for chunk in response1:
             print(chunk)
-            response_1_content += chunk.choices[0].delta.content or ""
-        print(response_1_content)
+            response_1_id = chunk.id
         time.sleep(0.5)
         response2 = completion(
             model="gpt-3.5-turbo",
@@ -451,15 +544,13 @@ def test_redis_cache_completion_stream():
             temperature=0.2,
             stream=True,
         )
-        response_2_content = ""
+        response_2_id = ""
         for chunk in response2:
             print(chunk)
-            response_2_content += chunk.choices[0].delta.content or ""
-        print("\nresponse 1", response_1_content)
-        print("\nresponse 2", response_2_content)
+            response_2_id = chunk.id
         assert (
-            response_1_content == response_2_content
-        ), f"Response 1 != Response 2. Same params, Response 1{response_1_content} != Response 2{response_2_content}"
+            response_1_id == response_2_id
+        ), f"Response 1 != Response 2. Same params, Response 1{response_1_id} != Response 2{response_2_id}"
         litellm.success_callback = []
         litellm.cache = None
         litellm.success_callback = []
@@ -477,11 +568,10 @@ def test_redis_cache_completion_stream():
 # test_redis_cache_completion_stream()
 
 
-def test_redis_cache_acompletion_stream():
-    import asyncio
-
+@pytest.mark.asyncio
+async def test_redis_cache_acompletion_stream():
     try:
-        litellm.set_verbose = False
+        litellm.set_verbose = True
         random_word = generate_random_word()
         messages = [
             {
@@ -499,37 +589,31 @@ def test_redis_cache_acompletion_stream():
         response_1_content = ""
         response_2_content = ""
 
-        async def call1():
-            nonlocal response_1_content
-            response1 = await litellm.acompletion(
-                model="gpt-3.5-turbo",
-                messages=messages,
-                max_tokens=40,
-                temperature=1,
-                stream=True,
-            )
-            async for chunk in response1:
-                response_1_content += chunk.choices[0].delta.content or ""
-            print(response_1_content)
+        response1 = await litellm.acompletion(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            max_tokens=40,
+            temperature=1,
+            stream=True,
+        )
+        async for chunk in response1:
+            response_1_content += chunk.choices[0].delta.content or ""
+        print(response_1_content)
 
-        asyncio.run(call1())
         time.sleep(0.5)
         print("\n\n Response 1 content: ", response_1_content, "\n\n")
 
-        async def call2():
-            nonlocal response_2_content
-            response2 = await litellm.acompletion(
-                model="gpt-3.5-turbo",
-                messages=messages,
-                max_tokens=40,
-                temperature=1,
-                stream=True,
-            )
-            async for chunk in response2:
-                response_2_content += chunk.choices[0].delta.content or ""
-            print(response_2_content)
+        response2 = await litellm.acompletion(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            max_tokens=40,
+            temperature=1,
+            stream=True,
+        )
+        async for chunk in response2:
+            response_2_content += chunk.choices[0].delta.content or ""
+        print(response_2_content)
 
-        asyncio.run(call2())
         print("\nresponse 1", response_1_content)
         print("\nresponse 2", response_2_content)
         assert (
@@ -539,14 +623,15 @@ def test_redis_cache_acompletion_stream():
         litellm.success_callback = []
         litellm._async_success_callback = []
     except Exception as e:
-        print(e)
+        print(f"{str(e)}\n\n{traceback.format_exc()}")
         raise e
 
 
 # test_redis_cache_acompletion_stream()
 
 
-def test_redis_cache_acompletion_stream_bedrock():
+@pytest.mark.asyncio
+async def test_redis_cache_acompletion_stream_bedrock():
     import asyncio
 
     try:
@@ -558,49 +643,38 @@ def test_redis_cache_acompletion_stream_bedrock():
                 "content": f"write a one sentence poem about: {random_word}",
             }
         ]
-        litellm.cache = Cache(
-            type="redis",
-            host=os.environ["REDIS_HOST"],
-            port=os.environ["REDIS_PORT"],
-            password=os.environ["REDIS_PASSWORD"],
-        )
+        litellm.cache = Cache(type="redis")
         print("test for caching, streaming + completion")
         response_1_content = ""
         response_2_content = ""
 
-        async def call1():
-            nonlocal response_1_content
-            response1 = await litellm.acompletion(
-                model="bedrock/anthropic.claude-v1",
-                messages=messages,
-                max_tokens=40,
-                temperature=1,
-                stream=True,
-            )
-            async for chunk in response1:
-                print(chunk)
-                response_1_content += chunk.choices[0].delta.content or ""
-            print(response_1_content)
+        response1 = await litellm.acompletion(
+            model="bedrock/anthropic.claude-v2",
+            messages=messages,
+            max_tokens=40,
+            temperature=1,
+            stream=True,
+        )
+        async for chunk in response1:
+            print(chunk)
+            response_1_content += chunk.choices[0].delta.content or ""
+        print(response_1_content)
 
-        asyncio.run(call1())
         time.sleep(0.5)
         print("\n\n Response 1 content: ", response_1_content, "\n\n")
 
-        async def call2():
-            nonlocal response_2_content
-            response2 = await litellm.acompletion(
-                model="bedrock/anthropic.claude-v1",
-                messages=messages,
-                max_tokens=40,
-                temperature=1,
-                stream=True,
-            )
-            async for chunk in response2:
-                print(chunk)
-                response_2_content += chunk.choices[0].delta.content or ""
-            print(response_2_content)
+        response2 = await litellm.acompletion(
+            model="bedrock/anthropic.claude-v2",
+            messages=messages,
+            max_tokens=40,
+            temperature=1,
+            stream=True,
+        )
+        async for chunk in response2:
+            print(chunk)
+            response_2_content += chunk.choices[0].delta.content or ""
+        print(response_2_content)
 
-        asyncio.run(call2())
         print("\nresponse 1", response_1_content)
         print("\nresponse 2", response_2_content)
         assert (
@@ -615,7 +689,8 @@ def test_redis_cache_acompletion_stream_bedrock():
         raise e
 
 
-def test_s3_cache_acompletion_stream_azure():
+@pytest.mark.asyncio
+async def test_s3_cache_acompletion_stream_azure():
     import asyncio
 
     try:
@@ -628,7 +703,9 @@ def test_s3_cache_acompletion_stream_azure():
             }
         ]
         litellm.cache = Cache(
-            type="s3", s3_bucket_name="cache-bucket-litellm", s3_region_name="us-west-2"
+            type="s3",
+            s3_bucket_name="litellm-my-test-bucket-2",
+            s3_region_name="us-east-1",
         )
         print("s3 Cache: test for caching, streaming + completion")
         response_1_content = ""
@@ -637,41 +714,35 @@ def test_s3_cache_acompletion_stream_azure():
         response_1_created = ""
         response_2_created = ""
 
-        async def call1():
-            nonlocal response_1_content, response_1_created
-            response1 = await litellm.acompletion(
-                model="azure/chatgpt-v-2",
-                messages=messages,
-                max_tokens=40,
-                temperature=1,
-                stream=True,
-            )
-            async for chunk in response1:
-                print(chunk)
-                response_1_created = chunk.created
-                response_1_content += chunk.choices[0].delta.content or ""
-            print(response_1_content)
+        response1 = await litellm.acompletion(
+            model="azure/chatgpt-v-2",
+            messages=messages,
+            max_tokens=40,
+            temperature=1,
+            stream=True,
+        )
+        async for chunk in response1:
+            print(chunk)
+            response_1_created = chunk.created
+            response_1_content += chunk.choices[0].delta.content or ""
+        print(response_1_content)
 
-        asyncio.run(call1())
         time.sleep(0.5)
         print("\n\n Response 1 content: ", response_1_content, "\n\n")
 
-        async def call2():
-            nonlocal response_2_content, response_2_created
-            response2 = await litellm.acompletion(
-                model="azure/chatgpt-v-2",
-                messages=messages,
-                max_tokens=40,
-                temperature=1,
-                stream=True,
-            )
-            async for chunk in response2:
-                print(chunk)
-                response_2_content += chunk.choices[0].delta.content or ""
-                response_2_created = chunk.created
-            print(response_2_content)
+        response2 = await litellm.acompletion(
+            model="azure/chatgpt-v-2",
+            messages=messages,
+            max_tokens=40,
+            temperature=1,
+            stream=True,
+        )
+        async for chunk in response2:
+            print(chunk)
+            response_2_content += chunk.choices[0].delta.content or ""
+            response_2_created = chunk.created
+        print(response_2_content)
 
-        asyncio.run(call2())
         print("\nresponse 1", response_1_content)
         print("\nresponse 2", response_2_content)
 
@@ -715,7 +786,9 @@ async def test_s3_cache_acompletion_azure():
             }
         ]
         litellm.cache = Cache(
-            type="s3", s3_bucket_name="cache-bucket-litellm", s3_region_name="us-west-2"
+            type="s3",
+            s3_bucket_name="litellm-my-test-bucket-2",
+            s3_region_name="us-east-1",
         )
         print("s3 Cache: test for caching, streaming + completion")
 
@@ -851,6 +924,53 @@ def test_cache_override():
 
 
 # test_cache_override()
+
+
+@pytest.mark.asyncio
+async def test_cache_control_overrides():
+    # we use the cache controls to ensure there is no cache hit on this test
+    litellm.cache = Cache(
+        type="redis",
+        host=os.environ["REDIS_HOST"],
+        port=os.environ["REDIS_PORT"],
+        password=os.environ["REDIS_PASSWORD"],
+    )
+    print("Testing cache override")
+    litellm.set_verbose = True
+    import uuid
+
+    unique_num = str(uuid.uuid4())
+
+    start_time = time.time()
+
+    response1 = await litellm.acompletion(
+        model="gpt-3.5-turbo",
+        messages=[
+            {
+                "role": "user",
+                "content": "hello who are you" + unique_num,
+            }
+        ],
+    )
+
+    print(response1)
+
+    await asyncio.sleep(2)
+
+    response2 = await litellm.acompletion(
+        model="gpt-3.5-turbo",
+        messages=[
+            {
+                "role": "user",
+                "content": "hello who are you" + unique_num,
+            }
+        ],
+        cache={"no-cache": True},
+    )
+
+    print(response2)
+
+    assert response1.id != response2.id
 
 
 def test_custom_redis_cache_params():

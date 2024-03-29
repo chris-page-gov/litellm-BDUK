@@ -2836,6 +2836,8 @@ def test_completion_hf_prompt_array():
         print(str(e))
         if "is currently loading" in str(e):
             return
+        if "Service Unavailable" in str(e):
+            return
         pytest.fail(f"Error occurred: {e}")
 
 
@@ -2905,6 +2907,7 @@ def test_async_text_completion_stream():
 
     async def test_get_response():
         try:
+            litellm.set_verbose = True
             response = await litellm.atext_completion(
                 model="gpt-3.5-turbo-instruct",
                 prompt="good morning",
@@ -2928,7 +2931,7 @@ def test_async_text_completion_stream():
     asyncio.run(test_get_response())
 
 
-test_async_text_completion_stream()
+# test_async_text_completion_stream()
 
 
 @pytest.mark.asyncio

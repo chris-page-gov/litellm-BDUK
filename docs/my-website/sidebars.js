@@ -20,6 +20,62 @@ const sidebars = {
     { type: "doc", id: "index" }, // NEW
     {
       type: "category",
+      label: "💥 OpenAI Proxy Server",
+      link: {
+        type: 'generated-index',
+        title: '💥 OpenAI Proxy Server',
+        description: `Proxy Server to call 100+ LLMs in a unified interface & track spend, set budgets per virtual key/user`,
+        slug: '/simple_proxy',
+      },
+      items: [
+        "proxy/quick_start", 
+        "proxy/deploy", 
+        "proxy/prod", 
+        "proxy/configs",
+        {
+          type: 'link',
+          label: '📖 All Endpoints',
+          href: 'https://litellm-api.up.railway.app/',
+        },
+        "proxy/enterprise",
+        "proxy/user_keys",
+        "proxy/virtual_keys",
+        "proxy/users",
+        "proxy/team_based_routing",
+        "proxy/ui",
+        "proxy/budget_alerts",
+        "proxy/cost_tracking",
+        "proxy/token_auth",
+        {
+          "type": "category",
+          "label": "🔥 Load Balancing",
+          "items": [
+            "proxy/load_balancing", 
+            "proxy/reliability",
+          ]
+        },
+        "proxy/model_management",
+        "proxy/health",
+        "proxy/debugging",
+        "proxy/pii_masking",
+        "proxy/prompt_injection",
+        "proxy/caching",
+        {
+          "type": "category",
+          "label": "Logging, Alerting",
+          "items": [
+            "proxy/logging", 
+            "proxy/alerting",
+            "proxy/streaming_logging",
+          ]
+        },
+        "proxy/call_hooks",
+        "proxy/rules",
+        "proxy/cli", 
+      ]
+    },
+    {
+      type: "category",
       label: "Completion()",
       link: {
         type: 'generated-index',
@@ -43,12 +99,13 @@ const sidebars = {
     },
     {
       type: "category",
-      label: "Embedding(), Moderation(), Image Generation()",
+      label: "Embedding(), Moderation(), Image Generation(), Audio Transcriptions()",
       items: [
         "embedding/supported_embedding", 
         "embedding/async_embedding",
         "embedding/moderation",
-        "image_generation"
+        "image_generation",
+        "audio_transcription"
       ],
     },
     {
@@ -64,8 +121,7 @@ const sidebars = {
         "providers/openai", 
         "providers/openai_compatible",
         "providers/azure", 
-        "providers/huggingface", 
-        "providers/ollama", 
+        "providers/azure_ai", 
         "providers/vertex", 
         "providers/palm", 
         "providers/gemini", 
@@ -73,8 +129,13 @@ const sidebars = {
         "providers/anthropic", 
         "providers/aws_sagemaker",
         "providers/bedrock", 
+        "providers/cohere", 
         "providers/anyscale",
+        "providers/huggingface", 
+        "providers/ollama", 
         "providers/perplexity", 
+        "providers/groq", 
+        "providers/fireworks_ai", 
         "providers/vllm", 
         "providers/xinference", 
         "providers/cloudflare_workers", 
@@ -82,7 +143,6 @@ const sidebars = {
         "providers/ai21", 
         "providers/nlp_cloud",
         "providers/replicate", 
-        "providers/cohere", 
         "providers/togetherai", 
         "providers/voyage", 
         "providers/aleph_alpha", 
@@ -92,67 +152,12 @@ const sidebars = {
         "providers/petals",
       ]
     },
-    {
-      type: "category",
-      label: "💥 OpenAI Proxy Server",
-      link: {
-        type: 'generated-index',
-        title: '💥 OpenAI Proxy Server',
-        description: `Proxy Server to call 100+ LLMs in a unified interface & track spend, set budgets per virtual key/user`,
-        slug: '/simple_proxy',
-      },
-      items: [
-        "proxy/quick_start", 
-        "proxy/configs",
-        {
-          type: 'link',
-          label: '📖 All Endpoints',
-          href: 'https://litellm-api.up.railway.app/',
-        },
-        "proxy/enterprise",
-        "proxy/user_keys",
-        "proxy/virtual_keys",
-        "proxy/users",
-        "proxy/ui",
-        "proxy/model_management",
-        "proxy/health",
-        "proxy/debugging",
-        "proxy/pii_masking",
-        {
-          "type": "category",
-          "label": "🔥 Load Balancing",
-          "items": [
-            "proxy/load_balancing", 
-            "proxy/reliability",
-          ]
-        },
-        "proxy/caching",
-        {
-          "type": "category",
-          "label": "Logging, Alerting",
-          "items": [
-            "proxy/logging", 
-            "proxy/alerting",
-            "proxy/streaming_logging",
-          ]
-        },
-        {
-          "type": "category",
-          "label": "Content Moderation",
-          "items": [
-            "proxy/call_hooks",
-            "proxy/rules",
-          ]
-        },
-        "proxy/deploy", 
-        "proxy/cli", 
-      ]
-    },
     "proxy/custom_pricing",
     "routing",
     "rules",
     "set_keys",
     "budget_manager",
+    "contributing",
     "secret",
     "completion/token_usage",
     "load_test",
@@ -170,6 +175,7 @@ const sidebars = {
         "observability/langsmith_integration",
         "observability/slack_integration",
         "observability/traceloop_integration",
+        "observability/athina_integration",
         "observability/llmonitor_integration",
         "observability/helicone_integration",
         "observability/supabase_integration",
@@ -182,6 +188,7 @@ const sidebars = {
       label: 'Tutorials',
       items: [
         'tutorials/azure_openai',
+        'tutorials/instructor',
         'tutorials/oobabooga',
         "tutorials/gradio_integration",
         'tutorials/huggingface_codellama',

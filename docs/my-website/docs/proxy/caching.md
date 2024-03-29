@@ -32,6 +32,35 @@ litellm_settings:
   cache: True          # set cache responses to True, litellm defaults to using a redis cache
 ```
 
+#### [OPTIONAL] Step 1.5: Add redis namespaces, default ttl 
+
+## Namespace
+If you want to create some folder for your keys, you can set a namespace, like this:
+
+```yaml
+litellm_settings:
+  cache: true 
+  cache_params:        # set cache params for redis
+    type: redis
+    namespace: "litellm_caching"
+```
+
+and keys will be stored like:
+
+```
+litellm_caching:<hash>
+```
+
+## TTL
+
+```yaml
+litellm_settings:
+  cache: true 
+  cache_params:        # set cache params for redis
+    type: redis
+    ttl: 600 # will be cached on redis for 600s
+```
+
 #### Step 2: Add Redis Credentials to .env
 Set either `REDIS_URL` or the `REDIS_HOST` in your os environment, to enable caching.
 
@@ -145,7 +174,7 @@ $ litellm --config /path/to/config.yaml
 
 Send the same request twice:
 ```shell
-curl http://0.0.0.0:8000/v1/chat/completions \
+curl http://0.0.0.0:4000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
      "model": "gpt-3.5-turbo",
@@ -153,7 +182,7 @@ curl http://0.0.0.0:8000/v1/chat/completions \
      "temperature": 0.7
    }'
 
-curl http://0.0.0.0:8000/v1/chat/completions \
+curl http://0.0.0.0:4000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
      "model": "gpt-3.5-turbo",
@@ -166,14 +195,14 @@ curl http://0.0.0.0:8000/v1/chat/completions \
 
 Send the same request twice:
 ```shell
-curl --location 'http://0.0.0.0:8000/embeddings' \
+curl --location 'http://0.0.0.0:4000/embeddings' \
   --header 'Content-Type: application/json' \
   --data ' {
   "model": "text-embedding-ada-002",
   "input": ["write a litellm poem"]
   }'
 
-curl --location 'http://0.0.0.0:8000/embeddings' \
+curl --location 'http://0.0.0.0:4000/embeddings' \
   --header 'Content-Type: application/json' \
   --data ' {
   "model": "text-embedding-ada-002",
@@ -182,6 +211,35 @@ curl --location 'http://0.0.0.0:8000/embeddings' \
 ```
 </TabItem>
 </Tabs>
+
+## Debugging Caching - `/cache/ping`
+LiteLLM Proxy exposes a `/cache/ping` endpoint to test if the cache is working as expected
+
+**Usage**
+```shell
+curl --location 'http://0.0.0.0:4000/cache/ping'  -H "Authorization: Bearer sk-1234"
+```
+
+**Expected Response - when cache healthy**
+```shell
+{
+    "status": "healthy",
+    "cache_type": "redis",
+    "ping_response": true,
+    "set_cache_response": "success",
+    "litellm_cache_params": {
+        "supported_call_types": "['completion', 'acompletion', 'embedding', 'aembedding', 'atranscription', 'transcription']",
+        "type": "redis",
+        "namespace": "None"
+    },
+    "redis_cache_params": {
+        "redis_client": "Redis<ConnectionPool<Connection<host=redis-16337.c322.us-east-1-2.ec2.cloud.redislabs.com,port=16337,db=0>>>",
+        "redis_kwargs": "{'url': 'redis://:******@redis-16337.c322.us-east-1-2.ec2.cloud.redislabs.com:16337'}",
+        "async_redis_conn_pool": "BlockingConnectionPool<Connection<host=redis-16337.c322.us-east-1-2.ec2.cloud.redislabs.com,port=16337,db=0>>",
+        "redis_version": "7.2.0"
+    }
+}
+```
 
 ## Advanced
 ### Set Cache Params on config.yaml
@@ -207,6 +265,32 @@ litellm_settings:
     supported_call_types: ["acompletion", "completion", "embedding", "aembedding"] # defaults to all litellm call types
 ```
 
+
+### Turn on `batch_redis_requests` 
+
+**What it does?**
+When a request is made:
+
+- Check if a key starting with `litellm:<hashed_api_key>:<call_type>:` exists in-memory, if no - get the last 100 cached requests for this key and store it
+
+- New requests are stored with this `litellm:..` as the namespace
+
+**Why?**
+Reduce number of redis GET requests. This improved latency by 46% in prod load tests. 
+
+**Usage**
+
+```yaml
+litellm_settings:
+  cache: true
+  cache_params:
+    type: redis
+    ... # remaining redis args (host, port, etc.)
+  callbacks: ["batch_redis_requests"] # 👈 KEY CHANGE!
+```
+
+[**SEE CODE**](https://github.com/BerriAI/litellm/blob/main/litellm/proxy/hooks/batch_redis_get.py)
+
 ### Turn on / off caching per request.  
 
 The proxy support 3 cache-controls:
@@ -227,7 +311,7 @@ from openai import OpenAI
 client = OpenAI(
     # This is the default and can be omitted
     api_key=os.environ.get("OPENAI_API_KEY"),
-		base_url="http://0.0.0.0:8000"
+		base_url="http://0.0.0.0:4000"
 )
 
 chat_completion = client.chat.completions.create(
@@ -238,9 +322,11 @@ chat_completion = client.chat.completions.create(
         }
     ],
     model="gpt-3.5-turbo",
-    cache={
-			"no-cache": True # will not return a cached response 
-		}
+    extra_body = {        # OpenAI python accepts extra args in extra_body
+        cache: {
+          "no-cache": True # will not return a cached response 
+      }
+    }
 )
 ```
 
@@ -253,7 +339,7 @@ from openai import OpenAI
 client = OpenAI(
     # This is the default and can be omitted
     api_key=os.environ.get("OPENAI_API_KEY"),
-		base_url="http://0.0.0.0:8000"
+		base_url="http://0.0.0.0:4000"
 )
 
 chat_completion = client.chat.completions.create(
@@ -264,9 +350,11 @@ chat_completion = client.chat.completions.create(
         }
     ],
     model="gpt-3.5-turbo",
-    cache={
-			"ttl": 600 # caches response for 10 minutes 
-		}
+    extra_body = {        # OpenAI python accepts extra args in extra_body
+        cache: {
+          "ttl": 600 # caches response for 10 minutes 
+      }
+    }
 )
 ```
 
@@ -277,7 +365,7 @@ from openai import OpenAI
 client = OpenAI(
     # This is the default and can be omitted
     api_key=os.environ.get("OPENAI_API_KEY"),
-		base_url="http://0.0.0.0:8000"
+		base_url="http://0.0.0.0:4000"
 )
 
 chat_completion = client.chat.completions.create(
@@ -288,13 +376,15 @@ chat_completion = client.chat.completions.create(
         }
     ],
     model="gpt-3.5-turbo",
-    cache={
-			"s-maxage": 600 # only get responses cached within last 10 minutes 
-		}
+    extra_body = {        # OpenAI python accepts extra args in extra_body
+        cache: {
+          "s-maxage": 600 # only get responses cached within last 10 minutes 
+      }
+    }
 )
 ```
 
-## Supported `cache_params`
+## Supported `cache_params` on proxy config.yaml
 
 ```yaml
 cache_params:

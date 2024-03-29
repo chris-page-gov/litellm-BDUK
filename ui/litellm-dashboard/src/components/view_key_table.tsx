@@ -43,7 +43,7 @@ const ViewKeyTable: React.FC<ViewKeyTableProps> = ({
 
     // Set the key to delete and open the confirmation modal
     setKeyToDelete(token);
-    localStorage.removeItem("userData" + userID)
+    localStorage.removeItem("userData" + userID);
     setIsDeleteModalOpen(true);
   };
 
@@ -78,20 +78,21 @@ const ViewKeyTable: React.FC<ViewKeyTableProps> = ({
   }
   console.log("RERENDER TRIGGERED");
   return (
-    <Card className="w-full mx-auto flex-auto overflow-y-auto max-h-[50vh] mb-4">
-      <Title>API Keys</Title>
+    <div>
+    <Card className="w-full mx-auto flex-auto overflow-y-auto max-h-[50vh] mb-4 mt-2">
       <Table className="mt-5">
         <TableHead>
           <TableRow>
             <TableHeaderCell>Key Alias</TableHeaderCell>
             <TableHeaderCell>Secret Key</TableHeaderCell>
             <TableHeaderCell>Spend (USD)</TableHeaderCell>
-            <TableHeaderCell>Key Budget (USD)</TableHeaderCell>
-            <TableHeaderCell>Team ID</TableHeaderCell>
-            <TableHeaderCell>Metadata</TableHeaderCell>
+            {/* <TableHeaderCell>Budget (USD)</TableHeaderCell> */}
+            {/* <TableHeaderCell>Spend Report</TableHeaderCell> */}
+            {/* <TableHeaderCell>Team</TableHeaderCell> */}
+            {/* <TableHeaderCell>Metadata</TableHeaderCell> */}
             <TableHeaderCell>Models</TableHeaderCell>
             <TableHeaderCell>TPM / RPM Limits</TableHeaderCell>
-            <TableHeaderCell>Expires</TableHeaderCell>
+            {/* <TableHeaderCell>Expires</TableHeaderCell> */}
           </TableRow>
         </TableHead>
         <TableBody>
@@ -103,63 +104,83 @@ const ViewKeyTable: React.FC<ViewKeyTableProps> = ({
             }
             return (
               <TableRow key={item.token}>
-                <TableCell>
+                <TableCell style={{ maxWidth: "2px", whiteSpace: "pre-wrap", overflow: "hidden"  }}>
                   {item.key_alias != null ? (
                     <Text>{item.key_alias}</Text>
                   ) : (
                     <Text>Not Set</Text>
                   )}
                 </TableCell>
-                <TableCell>
+                <TableCell style={{ maxWidth: "2px", whiteSpace: "pre-wrap", overflow: "hidden"  }}>
                   <Text>{item.key_name}</Text>
                 </TableCell>
-                <TableCell>
-                  <Text>{item.spend}</Text>
+                <TableCell style={{ maxWidth: "2px", whiteSpace: "pre-wrap", overflow: "hidden"  }}>
+                  <Text>
+                    {(() => {
+                      try {
+                        return parseFloat(item.spend).toFixed(4);
+                      } catch (error) {
+                        return item.spend;
+                      }
+                    })()}
+                  </Text>
                 </TableCell>
-                <TableCell>
+                {/* <TableCell style={{ maxWidth: "2px", whiteSpace: "pre-wrap", overflow: "hidden"  }}>
                   {item.max_budget != null ? (
                     <Text>{item.max_budget}</Text>
                   ) : (
-                    <Text>Unlimited Budget</Text>
+                    <Text>Unlimited</Text>
                   )}
-                </TableCell>
-                <TableCell>
-                  <Text>{item.team_id}</Text>
-                </TableCell>
-                <TableCell>
-                  <Text>{JSON.stringify(item.metadata)}</Text>
-                </TableCell>
-                <TableCell>
-                  <Text>{JSON.stringify(item.models)}</Text>
-                </TableCell>
-                <TableCell>
-                  <Text>
-                    TPM Limit: {item.tpm_limit ? item.tpm_limit : "Unlimited"}{" "}
-                    <br></br> RPM Limit:{" "}
-                    {item.rpm_limit ? item.rpm_limit : "Unlimited"}
-                  </Text>
-                </TableCell>
-                <TableCell>
-                  {item.expires != null ? (
-                    <Text>{item.expires}</Text>
-                  ) : (
-                    <Text>Never expires</Text>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Icon
-                    onClick={() => handleDelete(item.token)}
-                    icon={TrashIcon}
-                    size="sm"
-                  />
-                </TableCell>
-                <TableCell>
+                </TableCell> */}
+                {/* <TableCell style={{ maxWidth: '2px' }}>
                   <ViewKeySpendReport
                     token={item.token}
                     accessToken={accessToken}
                     keySpend={item.spend}
                     keyBudget={item.max_budget}
                     keyName={item.key_name}
+                  />
+                </TableCell> */}
+                {/* <TableCell style={{ maxWidth: "4px", whiteSpace: "pre-wrap", overflow: "hidden"  }}>
+                  <Text>{item.team_alias && item.team_alias != "None" ? item.team_alias : item.team_id}</Text>
+                </TableCell> */}
+                {/* <TableCell style={{ maxWidth: "4px", whiteSpace: "pre-wrap", overflow: "hidden"  }}>
+                  <Text>{JSON.stringify(item.metadata).slice(0, 400)}</Text>
+                  
+                </TableCell> */}
+
+                <TableCell>
+                  {Array.isArray(item.models) ? (
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      {item.models.map((model: string, index: number) => (
+                        <Badge key={index} size={"xs"} className="mb-1" color="blue">
+                          <Text>
+                           {model.length > 30 ? `${model.slice(0, 30)}...` : model}
+                           </Text>
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : null}
+                </TableCell>
+                <TableCell style={{ maxWidth: "2px", overflowWrap: "break-word" }}>
+                  <Text>
+                    TPM: {item.tpm_limit ? item.tpm_limit : "Unlimited"}{" "}
+                    <br></br> RPM:{" "}
+                    {item.rpm_limit ? item.rpm_limit : "Unlimited"}
+                  </Text>
+                </TableCell>
+                {/* <TableCell style={{ maxWidth: "2px", wordWrap: "break-word" }}>
+                  {item.expires != null ? (
+                    <Text>{item.expires}</Text>
+                  ) : (
+                    <Text>Never</Text>
+                  )}
+                </TableCell> */}
+                <TableCell style={{ maxWidth: "2px", wordWrap: "break-word" }}>
+                  <Icon
+                    onClick={() => handleDelete(item.token)}
+                    icon={TrashIcon}
+                    size="sm"
                   />
                 </TableCell>
               </TableRow>
@@ -212,6 +233,7 @@ const ViewKeyTable: React.FC<ViewKeyTableProps> = ({
         </div>
       )}
     </Card>
+    </div>
   );
 };
 
